@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>海外文物平台后台</title>
+    <style>
+        :root { --bg:#f3f5f9; --panel:#fff; --line:#e6eaf2; --text:#1f2a44; --muted:#6b7280; --primary:#2563eb; --danger:#dc2626; --success:#16a34a; --shadow:0 8px 20px rgba(15,23,42,.06); }
+        * { box-sizing: border-box; }
+        body { margin:0; font-family:"Microsoft YaHei", Arial, sans-serif; background:var(--bg); color:var(--text); }
+        .login-wrap { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+        .login-card { width:100%; max-width:460px; background:var(--panel); border-radius:14px; padding:28px; box-shadow:var(--shadow); border:1px solid var(--line); }
+        .login-title { margin:0 0 8px; font-size:22px; }
+        .login-subtitle { margin:0 0 18px; color:var(--muted); font-size:14px; }
+        .input, .select { width:100%; height:40px; border:1px solid var(--line); border-radius:8px; padding:0 12px; margin-bottom:10px; background:#fff; }
+        .btn { height:38px; border:0; border-radius:8px; padding:0 14px; cursor:pointer; }
+        .btn-primary { background:var(--primary); color:#fff; }
+        .btn-light { background:#eef2ff; color:var(--primary); }
+        .btn-danger { background:#fee2e2; color:var(--danger); }
+        .btn-success { background:#dcfce7; color:#166534; }
+        .btn-row { display:flex; gap:8px; margin-top:6px; }
+        .msg { margin-top:8px; font-size:14px; }
+        .ok { color:var(--success); }
+        .err { color:var(--danger); }
+        #app { display:none; height:100vh; }
+        .layout { display:flex; height:100vh; }
+        .sidebar { width:230px; background:#111827; color:#e5e7eb; padding:18px 12px; }
+        .brand { font-size:16px; font-weight:700; margin:0 10px 14px; }
+        .menu { display:flex; flex-direction:column; gap:6px; }
+        .menu-btn { text-align:left; border:0; background:transparent; color:#d1d5db; padding:10px 12px; border-radius:8px; cursor:pointer; }
+        .menu-btn.active, .menu-btn:hover { background:#1f2937; color:#fff; }
+        .main { flex:1; display:flex; flex-direction:column; min-width:0; }
+        .topbar { height:58px; background:var(--panel); border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; padding:0 16px; }
+        .topbar-title { font-size:16px; font-weight:700; }
+        .topbar-right { display:flex; align-items:center; gap:10px; color:var(--muted); font-size:13px; }
+        .content { padding:16px; overflow:auto; }
+        .panel { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; box-shadow:var(--shadow); margin-bottom:14px; }
+        .panel h3 { margin:0 0 10px; font-size:16px; }
+        .toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px; }
+        .inline { display:flex; gap:8px; flex-wrap:wrap; }
+        .inline .input, .inline .select { width:auto; min-width:140px; margin:0; }
+        table { width:100%; border-collapse:collapse; font-size:13px; background:#fff; }
+        th, td { border:1px solid var(--line); padding:8px; text-align:left; vertical-align:top; }
+        th { background:#f8fafc; }
+        .page { display:none; }
+        .page.active { display:block; }
+        .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; background:#e5e7eb; }
+        .muted { color:var(--muted); }
+    </style>
+</head>
+<body>
+<div id="loginView" class="login-wrap">
+    <div class="login-card">
+        <h1 class="login-title">后台管理系统</h1>
+        <p class="login-subtitle">海外藏中国文物知识管理与服务平台</p>
+        <input class="input" id="username" placeholder="管理员账号">
+        <input class="input" id="password" type="password" placeholder="管理员密码">
+        <div class="btn-row">
+            <button class="btn btn-primary" onclick="login()">登录</button>
+            <button class="btn btn-light" onclick="bootstrap()">首次初始化</button>
+        </div>
+        <p id="loginMsg" class="msg"></p>
+    </div>
+</div>
+
+<div id="app">
+    <div class="layout">
+        <aside class="sidebar">
+            <p class="brand">文物平台后台</p>
+            <div class="menu">
+                <button class="menu-btn active" onclick="switchPage('dashboardPage', this)">系统概览</button>
+                <button class="menu-btn" onclick="switchPage('adminPage', this)">管理员管理</button>
+                <button class="menu-btn" onclick="switchPage('userPage', this)">平台用户管理</button>
+                <button class="menu-btn" onclick="switchPage('reviewPage', this)">内容审核</button>
+                <button class="menu-btn" onclick="switchPage('logPage', this)">操作日志</button>
+            </div>
+        </aside>
+        <main class="main">
+            <header class="topbar">
+                <div class="topbar-title" id="pageTitle">系统概览</div>
+                <div class="topbar-right">
+                    <span id="me"></span>
+                    <button class="btn btn-danger" onclick="logout()">退出登录</button>
+                </div>
+            </header>
+            <section class="content">
+                <div id="dashboardPage" class="page active">
+                    <div class="panel">
+                        <h3>欢迎使用后台管理系统</h3>
+                        <p class="muted">左侧菜单可切换模块，页面已按后台系统布局拆分，不再堆叠在一页。</p>
+                    </div>
+                </div>
+                <div id="adminPage" class="page">
+                    <div class="panel">
+                        <h3>管理员管理</h3>
+                        <div class="toolbar"><button class="btn btn-light" onclick="loadAdmins()">刷新列表</button></div>
+                        <div class="inline">
+                            <input class="input" id="newAdminUsername" placeholder="新管理员用户名">
+                            <input class="input" id="newAdminPassword" placeholder="新管理员密码">
+                            <select class="select" id="newAdminRole">
+                                <option value="SUPER_ADMIN">SUPER_ADMIN</option>
+                                <option value="DATA_ADMIN">DATA_ADMIN</option>
+                                <option value="CONTENT_REVIEWER">CONTENT_REVIEWER</option>
+                            </select>
+                            <button class="btn btn-primary" onclick="createAdmin()">创建管理员</button>
+                        </div>
+                        <p id="adminMsg" class="msg"></p>
+                        <table id="adminTable"></table>
+                    </div>
+                </div>
+                <div id="userPage" class="page">
+                    <div class="panel">
+                        <h3>平台用户管理</h3>
+                        <div class="toolbar"><button class="btn btn-light" onclick="loadPlatformUsers()">刷新列表</button></div>
+                        <div class="inline">
+                            <input class="input" id="newUserUsername" placeholder="用户名">
+                            <input class="input" id="newUserEmail" placeholder="邮箱">
+                            <select class="select" id="newUserSource">
+                                <option value="WEB">WEB</option>
+                                <option value="APP">APP</option>
+                            </select>
+                            <button class="btn btn-primary" onclick="createPlatformUser()">创建用户</button>
+                        </div>
+                        <p id="userMsg" class="msg"></p>
+                        <table id="userTable"></table>
+                    </div>
+                </div>
+                <div id="reviewPage" class="page">
+                    <div class="panel">
+                        <h3>内容审核</h3>
+                        <div class="toolbar">
+                            <select class="select" id="reviewFilterStatus">
+                                <option value="">全部状态</option>
+                                <option value="PENDING">PENDING</option>
+                                <option value="APPROVED">APPROVED</option>
+                                <option value="REJECTED">REJECTED</option>
+                            </select>
+                            <button class="btn btn-light" onclick="loadReviewContents()">刷新审核列表</button>
+                        </div>
+                        <div class="inline">
+                            <select class="select" id="newReviewType">
+                                <option value="COMMENT">COMMENT</option>
+                                <option value="IMAGE">IMAGE</option>
+                                <option value="VIDEO">VIDEO</option>
+                                <option value="AUDIO">AUDIO</option>
+                            </select>
+                            <input class="input" id="newReviewSourceSystem" placeholder="来源子系统（WEB/APP）">
+                            <input class="input" id="newReviewSubmitter" placeholder="提交人">
+                            <input class="input" id="newReviewRiskScore" type="number" min="0" max="100" placeholder="风险分0-100">
+                            <input class="input" id="newReviewUrl" placeholder="内容URL(可选)">
+                            <input class="input" id="newReviewText" placeholder="内容文本" style="min-width:280px;">
+                            <button class="btn btn-primary" onclick="createReviewContent()">新增待审核</button>
+                        </div>
+                        <p id="reviewMsg" class="msg"></p>
+                        <table id="reviewTable"></table>
+                    </div>
+                </div>
+                <div id="logPage" class="page">
+                    <div class="panel">
+                        <h3>操作日志</h3>
+                        <div class="toolbar"><button class="btn btn-light" onclick="loadLogs()">刷新日志</button></div>
+                        <table id="logTable"></table>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+</div>
+
+<script>
+    let jwtToken = localStorage.getItem("jwtToken") || "";
+    const pageTitles = { dashboardPage: "系统概览", adminPage: "管理员管理", userPage: "平台用户管理", reviewPage: "内容审核", logPage: "操作日志" };
+
+    function setMsg(id, text, ok = true) {
+        const el = document.getElementById(id);
+        el.textContent = text;
+        el.className = ok ? "msg ok" : "msg err";
+    }
+
+    function switchPage(pageId, btnEl) {
+        document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+        document.getElementById(pageId).classList.add("active");
+        document.querySelectorAll(".menu-btn").forEach(b => b.classList.remove("active"));
+        if (btnEl) btnEl.classList.add("active");
+        document.getElementById("pageTitle").textContent = pageTitles[pageId] || "后台管理";
+    }
+
+    async function api(path, options = {}) {
+        const headers = Object.assign({ "Content-Type": "application/json" }, options.headers || {});
+        if (jwtToken) headers["Authorization"] = "Bearer " + jwtToken;
+        const resp = await fetch(path, Object.assign({}, options, { headers }));
+        const data = await resp.json();
+        if (!resp.ok || !data.success) throw new Error(data.message || "请求失败");
+        return data.data;
+    }
+
+    function showApp() {
+        document.getElementById("loginView").style.display = "none";
+        document.getElementById("app").style.display = "block";
+    }
+
+    function showLogin() {
+        document.getElementById("app").style.display = "none";
+        document.getElementById("loginView").style.display = "flex";
+    }
+
+    async function login() {
+        try {
+            const username = document.getElementById("username").value.trim();
+            const password = document.getElementById("password").value.trim();
+            const resp = await fetch("/api/admin/auth/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username, password })
+            });
+            const result = await resp.json();
+            if (!resp.ok || !result.success) throw new Error(result.message || "登录失败");
+            jwtToken = result.data.token;
+            localStorage.setItem("jwtToken", jwtToken);
+            const me = result.data.adminUser;
+            document.getElementById("me").textContent = `${me.username} | ${me.role}`;
+            showApp();
+            loadAdmins();
+            loadPlatformUsers();
+            loadReviewContents();
+            loadLogs();
+            setMsg("loginMsg", "登录成功");
+        } catch (e) {
+            setMsg("loginMsg", e.message, false);
+        }
+    }
+
+    async function bootstrap() {
+        try {
+            const username = document.getElementById("username").value.trim();
+            const password = document.getElementById("password").value.trim();
+            if (!username || !password) throw new Error("请输入要初始化的账号和密码");
+            const resp = await fetch("/api/admin/auth/bootstrap", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username, password, role: "SUPER_ADMIN" })
+            });
+            const data = await resp.json();
+            if (!resp.ok || !data.success) throw new Error(data.message || "初始化失败");
+            setMsg("loginMsg", "初始化成功，请点击登录");
+        } catch (e) {
+            setMsg("loginMsg", e.message, false);
+        }
+    }
+
+    function logout() {
+        jwtToken = "";
+        localStorage.removeItem("jwtToken");
+        showLogin();
+    }
+
+    async function tryAutoLogin() {
+        if (!jwtToken) return;
+        try {
+            const me = await api("/api/admin/auth/me");
+            document.getElementById("me").textContent = `${me.username} | ${me.role}`;
+            showApp();
+            loadAdmins();
+            loadPlatformUsers();
+            loadReviewContents();
+            loadLogs();
+        } catch (e) {
+            jwtToken = "";
+            localStorage.removeItem("jwtToken");
+            showLogin();
+        }
+    }
+
+    async function loadAdmins() {
+        try {
+            const data = await api("/api/admin/users");
+            document.getElementById("adminTable").innerHTML =
+                "<tr><th>ID</th><th>用户名</th><th>角色</th><th>状态</th><th>创建时间</th></tr>" +
+                data.map(x => `<tr><td>${x.id}</td><td>${x.username}</td><td><span class="badge">${x.role}</span></td><td>${x.status}</td><td>${x.createdAt || ""}</td></tr>`).join("");
+            setMsg("adminMsg", "加载成功");
+        } catch (e) { setMsg("adminMsg", e.message, false); }
+    }
+
+    async function createAdmin() {
+        try {
+            const payload = {
+                username: document.getElementById("newAdminUsername").value.trim(),
+                password: document.getElementById("newAdminPassword").value.trim(),
+                role: document.getElementById("newAdminRole").value
+            };
+            await api("/api/admin/users", { method: "POST", body: JSON.stringify(payload) });
+            setMsg("adminMsg", "创建管理员成功");
+            await loadAdmins();
+        } catch (e) { setMsg("adminMsg", e.message, false); }
+    }
+
+    async function loadPlatformUsers() {
+        try {
+            const data = await api("/api/admin/platform-users");
+            document.getElementById("userTable").innerHTML =
+                "<tr><th>ID</th><th>用户名</th><th>邮箱</th><th>来源</th><th>状态</th><th>评论权限</th><th>上传权限</th></tr>" +
+                data.map(x => `<tr><td>${x.id}</td><td>${x.username}</td><td>${x.email}</td><td>${x.source}</td><td>${x.status}</td><td>${x.commentAllowed}</td><td>${x.uploadAllowed}</td></tr>`).join("");
+            setMsg("userMsg", "加载成功");
+        } catch (e) { setMsg("userMsg", e.message, false); }
+    }
+
+    async function createPlatformUser() {
+        try {
+            const payload = {
+                username: document.getElementById("newUserUsername").value.trim(),
+                email: document.getElementById("newUserEmail").value.trim(),
+                source: document.getElementById("newUserSource").value
+            };
+            await api("/api/admin/platform-users", { method: "POST", body: JSON.stringify(payload) });
+            setMsg("userMsg", "创建平台用户成功");
+            await loadPlatformUsers();
+        } catch (e) { setMsg("userMsg", e.message, false); }
+    }
+
+    async function loadLogs() {
+        try {
+            const data = await api("/api/admin/logs");
+            document.getElementById("logTable").innerHTML =
+                "<tr><th>ID</th><th>操作人</th><th>类型</th><th>对象</th><th>详情</th><th>时间</th></tr>" +
+                data.map(x => `<tr><td>${x.id}</td><td>${x.operator}</td><td>${x.operationType}</td><td>${x.operationTarget}</td><td>${x.details || ""}</td><td>${x.operationTime || ""}</td></tr>`).join("");
+        } catch (e) { alert("日志加载失败: " + e.message); }
+    }
+
+    async function loadReviewContents() {
+        try {
+            const status = document.getElementById("reviewFilterStatus").value;
+            const path = status ? `/api/admin/reviews?status=${encodeURIComponent(status)}` : "/api/admin/reviews";
+            const data = await api(path);
+            document.getElementById("reviewTable").innerHTML =
+                "<tr><th>ID</th><th>类型</th><th>来源</th><th>提交人</th><th>文本</th><th>风险分</th><th>状态</th><th>拒绝原因</th><th>审核人</th><th>操作</th></tr>" +
+                data.map(x => `<tr><td>${x.id}</td><td>${x.contentType}</td><td>${x.sourceSystem}</td><td>${x.submitter}</td><td>${x.contentText}</td><td>${x.riskScore}</td><td>${x.reviewStatus}</td><td>${x.rejectReason || ""}</td><td>${x.reviewer || ""}</td><td>${x.reviewStatus === "PENDING" ? `<button class="btn btn-success" onclick="reviewAction(${x.id}, 'APPROVED')">通过</button> <button class="btn btn-danger" onclick="reviewAction(${x.id}, 'REJECTED')">拒绝</button>` : ""}</td></tr>`).join("");
+            setMsg("reviewMsg", "审核列表加载成功");
+        } catch (e) { setMsg("reviewMsg", e.message, false); }
+    }
+
+    async function createReviewContent() {
+        try {
+            const payload = {
+                contentType: document.getElementById("newReviewType").value,
+                sourceSystem: document.getElementById("newReviewSourceSystem").value.trim(),
+                submitter: document.getElementById("newReviewSubmitter").value.trim(),
+                contentText: document.getElementById("newReviewText").value.trim(),
+                contentUrl: document.getElementById("newReviewUrl").value.trim() || null,
+                riskScore: Number(document.getElementById("newReviewRiskScore").value || 0)
+            };
+            await api("/api/admin/reviews", { method: "POST", body: JSON.stringify(payload) });
+            setMsg("reviewMsg", "新增待审核内容成功");
+            await loadReviewContents();
+        } catch (e) { setMsg("reviewMsg", e.message, false); }
+    }
+
+    async function reviewAction(id, status) {
+        try {
+            let rejectReason = null;
+            if (status === "REJECTED") {
+                rejectReason = prompt("请输入拒绝原因:");
+                if (!rejectReason || !rejectReason.trim()) throw new Error("拒绝原因不能为空");
+            }
+            await api(`/api/admin/reviews/${id}/action`, { method: "PATCH", body: JSON.stringify({ reviewStatus: status, rejectReason }) });
+            setMsg("reviewMsg", "审核操作成功");
+            await loadReviewContents();
+        } catch (e) { setMsg("reviewMsg", e.message, false); }
+    }
+
+    tryAutoLogin();
+</script>
+</body>
+</html>
