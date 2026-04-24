@@ -2,6 +2,7 @@ package com.buct.adminbackend.dto;
 
 public record LoginResponse(
         String token,
-        AdminUserResponse adminUser
+        AdminUserResponse adminUser,
+        java.util.List<String> permissions
 ) {
 }

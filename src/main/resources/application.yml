@@ -23,3 +23,7 @@ security:
   jwt:
     secret: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
     expire-seconds: 86400
+
+integration:
+  user-system-base-url: http://localhost:9001
+  artifact-system-base-url: http://localhost:9002

@@ -33,6 +33,14 @@ public class ReviewController {
         return ApiResponse.ok(reviewContentRepository.findByReviewStatusOrderBySubmitTimeDesc(status));
     }
 
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','CONTENT_REVIEWER')")
+    public ApiResponse<ReviewContent> detail(@PathVariable Long id) {
+        ReviewContent content = reviewContentRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("审核内容不存在"));
+        return ApiResponse.ok(content);
+    }
+
     @PostMapping
     @PreAuthorize("hasAnyRole('SUPER_ADMIN','CONTENT_REVIEWER','DATA_ADMIN')")
     public ApiResponse<ReviewContent> create(@Valid @RequestBody CreateReviewContentRequest request, Authentication authentication) {
@@ -71,5 +79,26 @@ public class ReviewController {
         operationLogService.log(authentication.getName(), "REVIEW_CONTENT", String.valueOf(saved.getId()),
                 "审核结果: " + request.reviewStatus());
         return ApiResponse.ok("审核成功", saved);
+    }
+
+    @PatchMapping("/batch/action")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','CONTENT_REVIEWER')")
+    public ApiResponse<Void> batchReview(@RequestParam List<Long> ids,
+                                         @Valid @RequestBody ReviewActionRequest request,
+                                         Authentication authentication) {
+        if (request.reviewStatus() == ReviewStatus.PENDING) {
+            throw new IllegalArgumentException("审核动作不能设置为 PENDING");
+        }
+        for (Long id : ids) {
+            reviewContentRepository.findById(id).ifPresent(content -> {
+                content.setReviewStatus(request.reviewStatus());
+                content.setReviewTime(LocalDateTime.now());
+                content.setReviewer(authentication.getName());
+                content.setRejectReason(request.reviewStatus() == ReviewStatus.REJECTED ? request.rejectReason() : null);
+                reviewContentRepository.save(content);
+            });
+        }
+        operationLogService.log(authentication.getName(), "BATCH_REVIEW_CONTENT", ids.toString(), "审核结果: " + request.reviewStatus());
+        return ApiResponse.ok("批量审核成功", null);
     }
 }

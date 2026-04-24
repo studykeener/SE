@@ -10,6 +10,9 @@ import com.buct.adminbackend.enums.RoleType;
 import com.buct.adminbackend.enums.UserStatus;
 import com.buct.adminbackend.repository.AdminUserRepository;
 import com.buct.adminbackend.security.JwtService;
+import com.buct.adminbackend.service.AuditLogService;
+import com.buct.adminbackend.service.RolePermissionService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -30,6 +33,8 @@ public class AuthController {
     private final AuthenticationManager authenticationManager;
     private final UserDetailsService userDetailsService;
     private final JwtService jwtService;
+    private final RolePermissionService rolePermissionService;
+    private final AuditLogService auditLogService;
 
     @PostMapping("/bootstrap")
     public ApiResponse<AdminUserResponse> bootstrap(@Valid @RequestBody CreateAdminUserRequest request) {
@@ -46,7 +51,7 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ApiResponse<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
+    public ApiResponse<LoginResponse> login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest) {
         authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(request.username(), request.password())
         );
@@ -54,7 +59,12 @@ public class AuthController {
         String token = jwtService.generateToken(userDetails);
         AdminUser adminUser = adminUserRepository.findByUsername(request.username())
                 .orElseThrow(() -> new IllegalArgumentException("管理员不存在"));
-        LoginResponse response = new LoginResponse(token, toResponse(adminUser));
+        LoginResponse response = new LoginResponse(
+                token,
+                toResponse(adminUser),
+                rolePermissionService.getPermissionCodesByAdminId(adminUser.getId())
+        );
+        auditLogService.logLogin(request.username(), "SUCCESS", httpRequest.getRemoteAddr());
         return ApiResponse.ok("登录成功", response);
     }
 

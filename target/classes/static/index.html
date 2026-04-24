@@ -68,11 +68,13 @@
         <aside class="sidebar">
             <p class="brand">文物平台后台</p>
             <div class="menu">
-                <button class="menu-btn active" onclick="switchPage('dashboardPage', this)">系统概览</button>
-                <button class="menu-btn" onclick="switchPage('adminPage', this)">管理员管理</button>
-                <button class="menu-btn" onclick="switchPage('userPage', this)">平台用户管理</button>
-                <button class="menu-btn" onclick="switchPage('reviewPage', this)">内容审核</button>
-                <button class="menu-btn" onclick="switchPage('logPage', this)">操作日志</button>
+                <button class="menu-btn active" data-page="dashboardPage" onclick="switchPage('dashboardPage', this)">系统概览</button>
+                <button class="menu-btn" data-page="adminPage" onclick="switchPage('adminPage', this)">管理员管理</button>
+                <button class="menu-btn" data-page="rbacPage" onclick="switchPage('rbacPage', this)">角色权限管理</button>
+                <button class="menu-btn" data-page="userPage" onclick="switchPage('userPage', this)">平台用户管理</button>
+                <button class="menu-btn" data-page="reviewPage" onclick="switchPage('reviewPage', this)">内容审核</button>
+                <button class="menu-btn" data-page="artifactPage" onclick="switchPage('artifactPage', this)">文物数据管理</button>
+                <button class="menu-btn" data-page="logPage" onclick="switchPage('logPage', this)">日志管理</button>
             </div>
         </aside>
         <main class="main">
@@ -106,6 +108,34 @@
                         </div>
                         <p id="adminMsg" class="msg"></p>
                         <table id="adminTable"></table>
+                    </div>
+                </div>
+                <div id="rbacPage" class="page">
+                    <div class="panel">
+                        <h3>角色与权限管理</h3>
+                        <div class="toolbar">
+                            <button class="btn btn-light" onclick="loadRolesAndPermissions()">刷新角色/权限</button>
+                            <button class="btn btn-light" onclick="loadAdminsForAssign()">刷新管理员</button>
+                        </div>
+                        <div class="inline">
+                            <input class="input" id="newRoleCode" placeholder="角色代码(如 CUSTOM_ROLE)">
+                            <input class="input" id="newRoleName" placeholder="角色名称">
+                            <input class="input" id="newRoleDesc" placeholder="描述">
+                            <button class="btn btn-primary" onclick="createRole()">新增角色</button>
+                        </div>
+                        <div class="inline" style="margin-top:8px;">
+                            <input class="input" id="assignAdminId" placeholder="管理员ID">
+                            <input class="input" id="assignRoleIds" placeholder="角色ID列表,逗号分隔">
+                            <button class="btn btn-primary" onclick="assignRolesToAdmin()">给管理员分配角色</button>
+                        </div>
+                        <div class="inline" style="margin-top:8px;">
+                            <input class="input" id="assignPermRoleId" placeholder="角色ID">
+                            <input class="input" id="assignPermIds" placeholder="权限ID列表,逗号分隔">
+                            <button class="btn btn-primary" onclick="assignPermissionsToRole()">给角色分配权限</button>
+                        </div>
+                        <p id="rbacMsg" class="msg"></p>
+                        <table id="roleTable"></table>
+                        <table id="permissionTable" style="margin-top:10px;"></table>
                     </div>
                 </div>
                 <div id="userPage" class="page">
@@ -155,10 +185,38 @@
                         <table id="reviewTable"></table>
                     </div>
                 </div>
+                <div id="artifactPage" class="page">
+                    <div class="panel">
+                        <h3>文物数据管理</h3>
+                        <div class="toolbar">
+                            <button class="btn btn-light" onclick="loadArtifacts()">刷新列表</button>
+                            <button class="btn btn-light" onclick="exportArtifacts()">导出CSV</button>
+                        </div>
+                        <div class="inline">
+                            <input class="input" id="artifactId" placeholder="编辑时填ID(新增可空)">
+                            <input class="input" id="artifactName" placeholder="文物名称">
+                            <input class="input" id="artifactPeriod" placeholder="年代">
+                            <input class="input" id="artifactType" placeholder="类型">
+                            <input class="input" id="artifactMaterial" placeholder="材质">
+                            <input class="input" id="artifactImageUrl" placeholder="图片URL">
+                            <input class="input" id="artifactSourceSystem" placeholder="来源子系统">
+                            <input class="input" id="artifactKgStatus" placeholder="图谱同步状态">
+                            <button class="btn btn-primary" onclick="saveArtifact()">保存文物</button>
+                        </div>
+                        <p id="artifactMsg" class="msg"></p>
+                        <table id="artifactTable"></table>
+                    </div>
+                </div>
                 <div id="logPage" class="page">
                     <div class="panel">
-                        <h3>操作日志</h3>
-                        <div class="toolbar"><button class="btn btn-light" onclick="loadLogs()">刷新日志</button></div>
+                        <h3>日志与统计</h3>
+                        <div class="toolbar">
+                            <button class="btn btn-light" onclick="loadDashboard()">刷新统计</button>
+                            <button class="btn btn-light" onclick="loadLogs()">操作日志</button>
+                            <button class="btn btn-light" onclick="loadLoginLogs()">登录日志</button>
+                            <button class="btn btn-light" onclick="loadDataChangeLogs()">数据修改日志</button>
+                        </div>
+                        <div id="dashboardCards" class="inline"></div>
                         <table id="logTable"></table>
                     </div>
                 </div>
@@ -169,7 +227,15 @@
 
 <script>
     let jwtToken = localStorage.getItem("jwtToken") || "";
-    const pageTitles = { dashboardPage: "系统概览", adminPage: "管理员管理", userPage: "平台用户管理", reviewPage: "内容审核", logPage: "操作日志" };
+    const pageTitles = {
+        dashboardPage: "系统概览",
+        adminPage: "管理员管理",
+        rbacPage: "角色权限管理",
+        userPage: "平台用户管理",
+        reviewPage: "内容审核",
+        artifactPage: "文物数据管理",
+        logPage: "日志与统计"
+    };
 
     function setMsg(id, text, ok = true) {
         const el = document.getElementById(id);
@@ -218,11 +284,15 @@
             jwtToken = result.data.token;
             localStorage.setItem("jwtToken", jwtToken);
             const me = result.data.adminUser;
+            setMenuByRole(me.role, result.data.permissions || []);
             document.getElementById("me").textContent = `${me.username} | ${me.role}`;
             showApp();
+            loadDashboard();
             loadAdmins();
+            loadRolesAndPermissions();
             loadPlatformUsers();
             loadReviewContents();
+            loadArtifacts();
             loadLogs();
             setMsg("loginMsg", "登录成功");
         } catch (e) {
@@ -258,11 +328,15 @@
         if (!jwtToken) return;
         try {
             const me = await api("/api/admin/auth/me");
+            setMenuByRole(me.role, []);
             document.getElementById("me").textContent = `${me.username} | ${me.role}`;
             showApp();
+            loadDashboard();
             loadAdmins();
+            loadRolesAndPermissions();
             loadPlatformUsers();
             loadReviewContents();
+            loadArtifacts();
             loadLogs();
         } catch (e) {
             jwtToken = "";
@@ -324,6 +398,157 @@
                 "<tr><th>ID</th><th>操作人</th><th>类型</th><th>对象</th><th>详情</th><th>时间</th></tr>" +
                 data.map(x => `<tr><td>${x.id}</td><td>${x.operator}</td><td>${x.operationType}</td><td>${x.operationTarget}</td><td>${x.details || ""}</td><td>${x.operationTime || ""}</td></tr>`).join("");
         } catch (e) { alert("日志加载失败: " + e.message); }
+    }
+
+    async function loadLoginLogs() {
+        try {
+            const data = await api("/api/admin/logs/login");
+            document.getElementById("logTable").innerHTML =
+                "<tr><th>ID</th><th>用户名</th><th>结果</th><th>IP</th><th>时间</th></tr>" +
+                data.map(x => `<tr><td>${x.id}</td><td>${x.username}</td><td>${x.result}</td><td>${x.ipAddress || ""}</td><td>${x.loginTime || ""}</td></tr>`).join("");
+        } catch (e) { alert("登录日志加载失败: " + e.message); }
+    }
+
+    async function loadDataChangeLogs() {
+        try {
+            const data = await api("/api/admin/logs/data-change");
+            document.getElementById("logTable").innerHTML =
+                "<tr><th>ID</th><th>操作人</th><th>变更类型</th><th>对象类型</th><th>对象ID</th><th>详情</th><th>时间</th></tr>" +
+                data.map(x => `<tr><td>${x.id}</td><td>${x.operator}</td><td>${x.changeType}</td><td>${x.targetType}</td><td>${x.targetId}</td><td>${x.detail || ""}</td><td>${x.changeTime || ""}</td></tr>`).join("");
+        } catch (e) { alert("数据修改日志加载失败: " + e.message); }
+    }
+
+    async function loadDashboard() {
+        try {
+            const data = await api("/api/admin/dashboard/overview");
+            const trend = (data.loginTrend7d || []).map(x => `${x.date}:${x.count}`).join(" | ");
+            document.getElementById("dashboardCards").innerHTML = `
+                <span class="badge">总用户数: ${data.totalUsers}</span>
+                <span class="badge">今日新增用户: ${data.todayNewUsers}</span>
+                <span class="badge">待审核: ${data.pendingReviews}</span>
+                <span class="badge">文物总数: ${data.totalArtifacts}</span>
+                <span class="badge">近7天登录趋势: ${trend}</span>
+            `;
+        } catch (e) { console.log(e); }
+    }
+
+    async function loadRolesAndPermissions() {
+        try {
+            const roles = await api("/api/admin/rbac/roles");
+            const perms = await api("/api/admin/rbac/permissions");
+            document.getElementById("roleTable").innerHTML =
+                "<tr><th>ID</th><th>代码</th><th>名称</th><th>描述</th></tr>" +
+                roles.map(x => `<tr><td>${x.id}</td><td>${x.code}</td><td>${x.name}</td><td>${x.description || ""}</td></tr>`).join("");
+            document.getElementById("permissionTable").innerHTML =
+                "<tr><th>ID</th><th>代码</th><th>名称</th><th>描述</th></tr>" +
+                perms.map(x => `<tr><td>${x.id}</td><td>${x.code}</td><td>${x.name}</td><td>${x.description || ""}</td></tr>`).join("");
+            setMsg("rbacMsg", "角色权限数据已加载");
+        } catch (e) { setMsg("rbacMsg", e.message, false); }
+    }
+
+    function parseIds(text) {
+        return text.split(",").map(x => Number(x.trim())).filter(x => !Number.isNaN(x));
+    }
+
+    async function createRole() {
+        try {
+            const payload = {
+                code: document.getElementById("newRoleCode").value.trim(),
+                name: document.getElementById("newRoleName").value.trim(),
+                description: document.getElementById("newRoleDesc").value.trim()
+            };
+            await api("/api/admin/rbac/roles", { method: "POST", body: JSON.stringify(payload) });
+            setMsg("rbacMsg", "角色创建成功");
+            await loadRolesAndPermissions();
+        } catch (e) { setMsg("rbacMsg", e.message, false); }
+    }
+
+    async function assignRolesToAdmin() {
+        try {
+            const adminId = document.getElementById("assignAdminId").value.trim();
+            const ids = parseIds(document.getElementById("assignRoleIds").value.trim());
+            await api(`/api/admin/rbac/admins/${adminId}/roles`, { method: "POST", body: JSON.stringify({ ids }) });
+            setMsg("rbacMsg", "管理员角色分配成功");
+        } catch (e) { setMsg("rbacMsg", e.message, false); }
+    }
+
+    async function assignPermissionsToRole() {
+        try {
+            const roleId = document.getElementById("assignPermRoleId").value.trim();
+            const ids = parseIds(document.getElementById("assignPermIds").value.trim());
+            await api(`/api/admin/rbac/roles/${roleId}/permissions`, { method: "POST", body: JSON.stringify({ ids }) });
+            setMsg("rbacMsg", "角色权限分配成功");
+        } catch (e) { setMsg("rbacMsg", e.message, false); }
+    }
+
+    async function loadAdminsForAssign() {
+        await loadAdmins();
+        setMsg("rbacMsg", "管理员列表已刷新，可填ID分配角色");
+    }
+
+    async function loadArtifacts() {
+        try {
+            const data = await api("/api/admin/artifacts");
+            document.getElementById("artifactTable").innerHTML =
+                "<tr><th>ID</th><th>名称</th><th>年代</th><th>类型</th><th>材质</th><th>来源</th><th>图谱同步</th><th>操作</th></tr>" +
+                data.map(x => `<tr><td>${x.id}</td><td>${x.name}</td><td>${x.period || ""}</td><td>${x.type || ""}</td><td>${x.material || ""}</td><td>${x.sourceSystem || ""}</td><td>${x.kgSyncStatus}</td><td><button class="btn btn-light" onclick="fillArtifact(${x.id}, '${(x.name || "").replace(/'/g, "\\'")}', '${(x.period || "").replace(/'/g, "\\'")}', '${(x.type || "").replace(/'/g, "\\'")}', '${(x.material || "").replace(/'/g, "\\'")}', '${(x.imageUrl || "").replace(/'/g, "\\'")}', '${(x.sourceSystem || "").replace(/'/g, "\\'")}', '${(x.kgSyncStatus || "").replace(/'/g, "\\'")}')">编辑</button></td></tr>`).join("");
+            setMsg("artifactMsg", "文物列表加载成功");
+        } catch (e) { setMsg("artifactMsg", e.message, false); }
+    }
+
+    function fillArtifact(id, name, period, type, material, imageUrl, sourceSystem, kgStatus) {
+        document.getElementById("artifactId").value = id;
+        document.getElementById("artifactName").value = name;
+        document.getElementById("artifactPeriod").value = period;
+        document.getElementById("artifactType").value = type;
+        document.getElementById("artifactMaterial").value = material;
+        document.getElementById("artifactImageUrl").value = imageUrl;
+        document.getElementById("artifactSourceSystem").value = sourceSystem;
+        document.getElementById("artifactKgStatus").value = kgStatus;
+    }
+
+    async function saveArtifact() {
+        try {
+            const id = document.getElementById("artifactId").value.trim();
+            const payload = {
+                name: document.getElementById("artifactName").value.trim(),
+                period: document.getElementById("artifactPeriod").value.trim(),
+                type: document.getElementById("artifactType").value.trim(),
+                material: document.getElementById("artifactMaterial").value.trim(),
+                imageUrl: document.getElementById("artifactImageUrl").value.trim(),
+                sourceSystem: document.getElementById("artifactSourceSystem").value.trim(),
+                sourceId: null,
+                description: null,
+                kgSyncStatus: document.getElementById("artifactKgStatus").value.trim()
+            };
+            if (id) {
+                await api(`/api/admin/artifacts/${id}`, { method: "PUT", body: JSON.stringify(payload) });
+            } else {
+                await api("/api/admin/artifacts", { method: "POST", body: JSON.stringify(payload) });
+            }
+            setMsg("artifactMsg", "保存成功");
+            await loadArtifacts();
+        } catch (e) { setMsg("artifactMsg", e.message, false); }
+    }
+
+    function exportArtifacts() {
+        window.open("/api/admin/artifacts/export", "_blank");
+    }
+
+    function setMenuByRole(role, permissions) {
+        const hidden = new Set();
+        if (role === "CONTENT_REVIEWER") {
+            hidden.add("adminPage");
+            hidden.add("artifactPage");
+            hidden.add("rbacPage");
+        }
+        if (role === "DATA_ADMIN") {
+            hidden.add("rbacPage");
+        }
+        document.querySelectorAll(".menu-btn").forEach(btn => {
+            const page = btn.getAttribute("data-page");
+            btn.style.display = hidden.has(page) ? "none" : "block";
+        });
     }
 
     async function loadReviewContents() {
