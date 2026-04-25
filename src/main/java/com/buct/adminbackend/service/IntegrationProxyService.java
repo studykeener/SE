@@ -75,11 +75,15 @@ public class IntegrationProxyService {
             return new IntegrationCallResult("mock", m, "mock://" + system + subPath, true,
                     Map.of("message", "Mock 通用转发", "system", system, "subPath", subPath, "input", body));
         }
-        String base = "user".equalsIgnoreCase(system)
-                ? properties.getUserSystemBaseUrl()
-                : properties.getArtifactSystemBaseUrl();
-        if (!"user".equalsIgnoreCase(system) && !"artifact".equalsIgnoreCase(system)) {
-            throw new IllegalArgumentException("system 只支持 user 或 artifact");
+        String base;
+        if ("user".equalsIgnoreCase(system)) {
+            base = properties.getUserSystemBaseUrl();
+        } else if ("artifact".equalsIgnoreCase(system)) {
+            base = properties.getArtifactSystemBaseUrl();
+        } else if ("kg".equalsIgnoreCase(system)) {
+            base = properties.getKgSystemBaseUrl();
+        } else {
+            throw new IllegalArgumentException("system 只支持 user / artifact / kg");
         }
         if (subPath == null || !subPath.startsWith("/")) {
             throw new IllegalArgumentException("subPath 需以 / 开头");
@@ -89,18 +93,36 @@ public class IntegrationProxyService {
             Object res = doGetJson(url);
             return new IntegrationCallResult("real", m, url, false, res);
         }
-        if ("POST".equals(m)) {
-            Map<String, Object> mapBody;
-            if (body == null) {
-                mapBody = Map.of();
-            } else if (body instanceof Map) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> cast = (Map<String, Object>) body;
-                mapBody = cast;
-            } else {
-                mapBody = objectMapper.convertValue(body, new TypeReference<>() { });
+        if ("POST".equals(m) || "PUT".equals(m) || "PATCH".equals(m) || "DELETE".equals(m)) {
+            Map<String, Object> mapBody = convertToMapBody(body);
+            if ("POST".equals(m)) {
+                String raw = restClient.post()
+                        .uri(url)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(mapBody)
+                        .retrieve()
+                        .body(String.class);
+                return new IntegrationCallResult("real", m, url, false, parseJsonOrRaw(raw));
             }
-            String raw = restClient.post()
+            if ("PUT".equals(m)) {
+                String raw = restClient.put()
+                        .uri(url)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(mapBody)
+                        .retrieve()
+                        .body(String.class);
+                return new IntegrationCallResult("real", m, url, false, parseJsonOrRaw(raw));
+            }
+            if ("PATCH".equals(m)) {
+                String raw = restClient.patch()
+                        .uri(url)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(mapBody)
+                        .retrieve()
+                        .body(String.class);
+                return new IntegrationCallResult("real", m, url, false, parseJsonOrRaw(raw));
+            }
+            String raw = restClient.method(org.springframework.http.HttpMethod.DELETE)
                     .uri(url)
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(mapBody)
@@ -108,7 +130,19 @@ public class IntegrationProxyService {
                     .body(String.class);
             return new IntegrationCallResult("real", m, url, false, parseJsonOrRaw(raw));
         }
-        throw new IllegalArgumentException("仅支持 GET / POST 转发");
+        throw new IllegalArgumentException("仅支持 GET / POST / PUT / PATCH / DELETE 转发");
+    }
+
+    private Map<String, Object> convertToMapBody(Object body) {
+        if (body == null) {
+            return Map.of();
+        }
+        if (body instanceof Map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> cast = (Map<String, Object>) body;
+            return cast;
+        }
+        return objectMapper.convertValue(body, new TypeReference<>() { });
     }
 
     private Object doGetJson(String url) {

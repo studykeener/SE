@@ -113,6 +113,32 @@
     </div>
 </div>
 
+<div id="userBehaviorModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal-box" style="max-width:980px;" onclick="event.stopPropagation()">
+        <h3 class="modal-title">用户行为记录</h3>
+        <p class="muted" id="userBehaviorModalHint" style="font-size:12px; margin:0 0 8px;">按类型与时间筛选，可新增行为记录。</p>
+        <div class="toolbar" style="margin-bottom:8px;">
+            <input class="input" id="behaviorFilterType" placeholder="行为类型(如 COMMENT)" style="min-width:180px;">
+            <input class="input" id="behaviorFilterFrom" type="datetime-local" title="行为时间起">
+            <input class="input" id="behaviorFilterTo" type="datetime-local" title="行为时间止">
+            <button type="button" class="btn btn-light" onclick="loadUserBehaviors(0)">查询</button>
+            <button type="button" class="btn btn-light" onclick="resetUserBehaviorFilters()">重置</button>
+        </div>
+        <div class="inline" style="margin-bottom:8px;">
+            <input class="input" id="newBehaviorType" placeholder="行为类型(必填，如 COMMENT)" style="min-width:160px;">
+            <input class="input" id="newBehaviorContent" placeholder="行为内容(可选)" style="min-width:220px;">
+            <input class="input" id="newBehaviorSourceSystem" placeholder="来源系统(必填，如 MUSEUM_APP)" style="min-width:180px;">
+            <input class="input" id="newBehaviorSourceRecordId" placeholder="来源记录ID(可选)" style="min-width:140px;">
+            <button type="button" class="btn btn-primary" onclick="createUserBehavior()">新增行为</button>
+        </div>
+        <p id="userBehaviorMsg" class="msg"></p>
+        <table id="userBehaviorTable"></table>
+        <div class="btn-row" style="margin-top:12px; justify-content:flex-end;">
+            <button type="button" class="btn btn-light" onclick="closeUserBehaviorModal()">关闭</button>
+        </div>
+    </div>
+</div>
+
 <div id="app">
     <div class="layout">
         <aside class="sidebar">
@@ -126,6 +152,8 @@
                 <button class="menu-btn" id="sensitiveMenuBtn" onclick="openReviewSectionFromMenu('sensitive', this)">敏感词库</button>
                 <button class="menu-btn" id="reviewStatsMenuBtn" onclick="openReviewSectionFromMenu('stats', this)">审核统计</button>
                 <button class="menu-btn" data-page="artifactPage" onclick="switchPage('artifactPage', this)">文物数据管理</button>
+                <button class="menu-btn" data-page="kgPage" onclick="switchPage('kgPage', this)">知识图谱管理</button>
+                <button class="menu-btn" data-page="backupPage" onclick="switchPage('backupPage', this)">数据备份与恢复</button>
                 <button class="menu-btn" data-page="integrationPage" onclick="switchPage('integrationPage', this)">子系统 API 代理</button>
                 <button class="menu-btn" data-page="logPage" onclick="switchPage('logPage', this)">日志管理</button>
             </div>
@@ -146,6 +174,15 @@
                             <button type="button" class="btn btn-light" onclick="loadDashboard()">刷新统计</button>
                         </div>
                         <div id="dashboardOverviewStats" class="inline" style="margin-top:8px;"></div>
+                        <div class="panel" style="margin-top:10px;">
+                            <h3 style="font-size:14px;">访问量趋势（日/周/月）</h3>
+                            <div class="muted" id="dashboardAccessSummary" style="font-size:12px; margin-bottom:6px;"></div>
+                            <div id="dashboardAccessCharts"></div>
+                        </div>
+                        <div class="panel" style="margin-top:10px;">
+                            <h3 style="font-size:14px;">数据增长趋势（近14天）</h3>
+                            <div id="dashboardGrowthCharts"></div>
+                        </div>
                     </div>
                 </div>
                 <div id="adminPage" class="page">
@@ -230,8 +267,8 @@
                 </div>
                 <div id="userPage" class="page">
                     <div class="panel">
-                        <h3>平台用户管理</h3>
-                        <p class="muted" style="font-size:12px; margin-top:0;">面向 Web / 掌上端前台用户。支持按条件筛选、批量启停与删除、单条编辑删除。</p>
+                        <h3>统一用户管理</h3>
+                        <p class="muted" style="font-size:12px; margin-top:0;">统一管理全平台用户，按用户名/来源/注册时间筛选，支持批量操作、细粒度权限与行为追溯。</p>
                         <div class="toolbar" style="margin-bottom:8px;">
                             <input class="input" id="filterUserName" placeholder="用户名(模糊)">
                             <select class="select" id="filterUserSource" title="来源">
@@ -257,22 +294,28 @@
                         </div>
                         <div class="inline" id="userCreateBar">
                             <input class="input" id="newUserUsername" placeholder="用户名">
+                            <input class="input" id="newUserDisplayName" placeholder="显示名(可选)">
                             <input class="input" id="newUserEmail" placeholder="邮箱">
+                            <input class="input" id="newUserPhone" placeholder="手机号(可选)">
                             <select class="select" id="newUserSource">
                                 <option value="WEB">Web 端</option>
                                 <option value="APP">手机端</option>
                             </select>
+                            <input class="input" id="newUserSourceUserId" placeholder="来源用户ID">
                             <button class="btn btn-primary" onclick="createPlatformUser()">创建用户</button>
                         </div>
                         <div class="inline" id="userEditPanel" style="display:none; margin-top:8px; padding:10px; background:#f8fafc; border:1px solid var(--line); border-radius:8px; width:100%; flex-wrap:wrap;">
                             <input type="hidden" id="editUserId">
                             <span>编辑 <strong id="editUserNameLabel"></strong>：</span>
                             <input class="input" id="editUserUsername" placeholder="用户名" style="min-width:120px;">
+                            <input class="input" id="editUserDisplayName" placeholder="显示名" style="min-width:120px;">
                             <input class="input" id="editUserEmail" type="email" placeholder="邮箱" style="min-width:180px;">
+                            <input class="input" id="editUserPhone" placeholder="手机号" style="min-width:140px;">
                             <select class="select" id="editUserSource">
                                 <option value="WEB">Web 端</option>
                                 <option value="APP">手机端</option>
                             </select>
+                            <input class="input" id="editUserSourceUserId" placeholder="来源用户ID" style="min-width:140px;">
                             <select class="select" id="editUserStatus">
                                 <option value="ENABLED">启用</option>
                                 <option value="DISABLED">禁用</option>
@@ -472,6 +515,84 @@
                         <table id="artifactTable"></table>
                     </div>
                 </div>
+                <div id="kgPage" class="page">
+                    <div class="panel">
+                        <h3>知识图谱管理</h3>
+                        <p class="muted" style="margin-top:0; font-size:12px;">
+                            本页通过本后台代理调用知识图谱子系统 API，实现实体/关系/三元组在线编辑，并可触发图数据库同步任务。
+                        </p>
+                        <div class="toolbar" style="margin-bottom:8px;">
+                            <button class="btn btn-light" onclick="loadKgEndpoints()">查看对接配置</button>
+                            <button class="btn btn-light" onclick="loadKgSyncJobs()">刷新同步任务</button>
+                            <button class="btn btn-primary" onclick="triggerKgSync()">触发图数据库同步</button>
+                        </div>
+                        <pre class="json-out" id="kgEndpointOut" style="max-height:180px;">点击“查看对接配置”查看 kg baseUrl 与路径…</pre>
+
+                        <div class="panel" style="margin-top:10px;">
+                            <h3 style="font-size:14px;">三元组数据在线编辑</h3>
+                            <div class="inline">
+                                <select class="select" id="kgResourceType" style="min-width:160px;" onchange="loadKgResourceList()">
+                                    <option value="entities">实体</option>
+                                    <option value="relations">关系</option>
+                                    <option value="triples">三元组</option>
+                                </select>
+                                <button class="btn btn-light" onclick="loadKgResourceList()">刷新列表</button>
+                            </div>
+                            <table id="kgTable" style="margin-top:8px;"></table>
+                        </div>
+
+                        <div class="panel" style="margin-top:10px;">
+                            <h3 style="font-size:14px;">新增 / 修改</h3>
+                            <p class="muted" style="font-size:12px; margin:0 0 8px;">编辑 JSON 后保存。包含 <code>id</code> 时按更新处理，不含 <code>id</code> 时按新增处理。</p>
+                            <textarea id="kgEditPayload" class="modal-textarea" rows="8" placeholder='例如：{"name":"青花瓷"}'></textarea>
+                            <div class="btn-row" style="justify-content:flex-end;">
+                                <button class="btn btn-light" onclick="fillKgSamplePayload()">填充示例</button>
+                                <button class="btn btn-primary" onclick="saveKgResource()">保存</button>
+                            </div>
+                        </div>
+
+                        <div class="panel" style="margin-top:10px;">
+                            <h3 style="font-size:14px;">删除</h3>
+                            <div class="inline">
+                                <input class="input" id="kgDeleteId" placeholder="输入要删除的 ID（数字）" style="max-width:220px;">
+                                <button class="btn btn-danger" onclick="deleteKgResourceById()">按 ID 删除</button>
+                            </div>
+                        </div>
+
+                        <div class="panel" style="margin-top:10px;">
+                            <h3 style="font-size:14px;">同步任务</h3>
+                            <table id="kgSyncJobTable"></table>
+                        </div>
+
+                        <p id="kgMsg" class="msg"></p>
+                    </div>
+                </div>
+                <div id="backupPage" class="page">
+                    <div class="panel">
+                        <h3>数据备份与恢复</h3>
+                        <p class="muted" style="font-size:12px; margin-top:0;">支持手动备份、定时自动备份、备份记录下载、恢复与保留策略清理。</p>
+                        <div class="toolbar" style="margin-bottom:8px;">
+                            <select class="select" id="backupType" style="min-width:140px;">
+                                <option value="FULL">全量备份</option>
+                                <option value="TABLES">指定表备份</option>
+                            </select>
+                            <select class="select" id="backupTableSelect" style="min-width:220px; display:none;"></select>
+                            <button class="btn btn-light" id="backupAddTableBtn" style="display:none;" onclick="addSelectedBackupTable()">添加表</button>
+                            <button class="btn btn-light" id="backupRemoveTableBtn" style="display:none;" onclick="removeSelectedBackupTable()">移除表</button>
+                            <input class="input" id="backupTables" placeholder="指定表列表（自动填充）" style="min-width:260px; display:none;" readonly>
+                            <button class="btn btn-primary" onclick="createManualBackup()">立即备份</button>
+                            <button class="btn btn-light" onclick="loadBackupRecords()">刷新记录</button>
+                        </div>
+                        <div class="inline" style="margin-bottom:8px; align-items:center;">
+                            <label class="muted" style="display:inline-flex; align-items:center; gap:4px;"><input type="checkbox" id="backupAutoEnabled"> 自动备份</label>
+                            <input class="input" id="backupCronExpression" placeholder="Cron 表达式（如 0 0 2 * * *）" style="min-width:220px;">
+                            <input class="input" id="backupRetentionDays" type="number" min="1" max="3650" placeholder="保留天数" style="max-width:120px;">
+                            <button class="btn btn-light" onclick="saveBackupConfig()">保存策略</button>
+                        </div>
+                        <p id="backupMsg" class="msg"></p>
+                        <table id="backupTable"></table>
+                    </div>
+                </div>
                 <div id="integrationPage" class="page">
                     <div class="panel">
                         <h3>子系统 API 代理联调</h3>
@@ -491,6 +612,7 @@
                             <select class="select" id="fwdSystem" style="width:120px;">
                                 <option value="user">user 子系统</option>
                                 <option value="artifact">artifact 子系统</option>
+                                <option value="kg">kg 子系统</option>
                             </select>
                             <button class="btn btn-primary" onclick="proxyForwardGet()">GET 转发</button>
                         </div>
@@ -503,11 +625,24 @@
                         <h3>日志与统计</h3>
                         <div class="toolbar">
                             <button class="btn btn-light" onclick="loadDashboard()">刷新统计</button>
-                            <button class="btn btn-light" onclick="loadLogs()">操作日志</button>
-                            <button class="btn btn-light" onclick="loadLoginLogs()">登录日志</button>
-                            <button class="btn btn-light" onclick="loadDataChangeLogs()">数据修改日志</button>
+                            <button class="btn btn-light" onclick="loadLogs('operation')">操作日志</button>
+                            <button class="btn btn-light" onclick="loadLogs('system')">系统日志</button>
+                            <button class="btn btn-light" onclick="loadLogs('security')">安全日志</button>
+                            <button class="btn btn-light" onclick="loadLogs('login')">登录日志</button>
+                            <button class="btn btn-light" onclick="loadLogs('data-change')">数据修改日志</button>
+                        </div>
+                        <div class="toolbar" style="margin-top:8px;">
+                            <input class="input" id="logFilterOperator" placeholder="操作人">
+                            <input class="input" id="logFilterType" placeholder="类型(操作类型/事件类型/结果)">
+                            <input class="input" id="logFilterKeyword" placeholder="关键字">
+                            <input class="input" id="logFilterFrom" type="datetime-local" title="时间起">
+                            <input class="input" id="logFilterTo" type="datetime-local" title="时间止">
+                            <button class="btn btn-primary" onclick="reloadCurrentLogType()">查询</button>
+                            <button class="btn btn-light" onclick="resetLogFilters()">重置</button>
+                            <button class="btn btn-light" onclick="exportCurrentLogs()">导出CSV</button>
                         </div>
                         <div id="dashboardCards" class="inline"></div>
+                        <p id="logMsg" class="msg"></p>
                         <table id="logTable"></table>
                     </div>
                 </div>
@@ -520,6 +655,8 @@
     let jwtToken = localStorage.getItem("jwtToken") || "";
     let currentAppRole = "";
     let currentReviewSection = "queue";
+    let backupTableOptions = [];
+    let backupSelectedTables = [];
     let reviewStatsLastData = null;
     let reviewStatsReviewerSortDesc = true;
     /** 审核员表：'all' 全部 | 'contentReviewer' 仅内容审核员角色 */
@@ -530,9 +667,11 @@
         dashboardPage: "系统概览",
         adminPage: "管理员管理",
         rbacPage: "角色与权限",
-        userPage: "平台用户",
+        userPage: "统一用户",
         reviewPage: "内容审核",
         artifactPage: "文物数据",
+        kgPage: "知识图谱管理",
+        backupPage: "数据备份与恢复",
         integrationPage: "子系统 API 代理",
         logPage: "日志与统计"
     };
@@ -663,6 +802,18 @@
         document.querySelectorAll(".menu-btn").forEach(b => b.classList.remove("active"));
         if (btnEl) btnEl.classList.add("active");
         document.getElementById("pageTitle").textContent = pageTitles[pageId] || "后台管理";
+        if (pageId === "kgPage") {
+            if (document.getElementById("kgEndpointOut") && document.getElementById("kgEndpointOut").textContent.includes("点击")) {
+                loadKgEndpoints();
+            }
+            loadKgResourceList();
+            loadKgSyncJobs();
+        }
+        if (pageId === "backupPage") {
+            loadBackupConfig();
+            loadBackupTables();
+            loadBackupRecords();
+        }
     }
     function setReviewSection(section) {
         resetReviewSubsectionUI();
@@ -924,7 +1075,7 @@
         const un = document.getElementById("filterUserName").value.trim();
         if (un) p.set("username", un);
         const src = document.getElementById("filterUserSource").value;
-        if (src) p.set("source", src);
+        if (src) p.set("sourceSystem", src);
         const st = document.getElementById("filterUserStatus").value;
         if (st) p.set("status", st);
         const f = localDateTimeToApi(document.getElementById("filterUserCreatedFrom").value);
@@ -952,7 +1103,7 @@
         if (typeof page === "number" && !Number.isNaN(page)) { userListPage = Math.max(0, page); }
         try {
             const p = buildPlatformUserQuery();
-            const data = await api("/api/admin/platform-users?" + p.toString());
+            const data = await api("/api/admin/unified-users?" + p.toString());
             const list = data.content || [];
             if (list.length === 0 && (data.totalElements || 0) > 0 && userListPage > 0) {
                 userListPage = Math.max(0, userListPage - 1);
@@ -974,21 +1125,24 @@
                 if (next) next.disabled = userListPage >= totalPages - 1;
             }
             document.getElementById("userTable").innerHTML =
-                "<tr><th><input type=\"checkbox\" onchange=\"toggleAllUsers(this.checked)\" title=\"全选\"></th><th>ID</th><th>用户名</th><th>邮箱</th><th>来源</th><th>状态</th><th>注册时间</th><th>评论</th><th>上传</th><th>操作</th></tr>" +
+                "<tr><th><input type=\"checkbox\" onchange=\"toggleAllUsers(this.checked)\" title=\"全选\"></th><th>ID</th><th>用户名</th><th>显示名</th><th>邮箱</th><th>来源</th><th>来源ID</th><th>状态</th><th>注册时间</th><th>评论</th><th>上传</th><th>操作</th></tr>" +
                 list.map(x => {
-                    return `<tr><td><input type="checkbox" class="user-pick" data-id="${x.id}"></td><td>${x.id}</td><td>${x.username}</td><td>${x.email}</td><td>${sourceToZh(x.source)}</td><td>${statusToZh(x.status)}</td><td>${x.createdAt || ""}</td><td>${x.commentAllowed ? "允许" : "禁止"}</td><td>${x.uploadAllowed ? "允许" : "禁止"}</td><td><button class="btn btn-light" onclick="openEditUser(${x.id})">编辑</button> <button class="btn btn-danger" onclick="deletePlatformUser(${x.id}, '${String(x.username).replace(/'/g, "")}')">删除</button></td></tr>`;
+                    return `<tr><td><input type="checkbox" class="user-pick" data-id="${x.id}"></td><td>${x.id}</td><td>${x.username || ""}</td><td>${x.displayName || ""}</td><td>${x.email || ""}</td><td>${sourceToZh(x.sourceSystem)}</td><td>${x.sourceUserId || ""}</td><td>${statusToZh(x.status)}</td><td>${x.createdAt || ""}</td><td>${x.commentAllowed ? "允许" : "禁止"}</td><td>${x.uploadAllowed ? "允许" : "禁止"}</td><td><button class="btn btn-light" onclick="openEditUser(${x.id})">编辑</button> <button class="btn btn-light" onclick="openUserBehaviorModal(${x.id}, '${String(x.username || '').replace(/'/g, '')}')">行为</button> <button class="btn btn-danger" onclick="deletePlatformUser(${x.id}, '${String(x.username || "").replace(/'/g, "")}')">删除</button></td></tr>`;
                 }).join("");
             setMsg("userMsg", "加载成功", true);
         } catch (e) { setMsg("userMsg", e.message, false); }
     }
     async function openEditUser(id) {
         let u;
-        try { u = await api("/api/admin/platform-users/" + id); } catch (e) { setMsg("userMsg", e.message, false); return; }
+        try { u = await api("/api/admin/unified-users/" + id); } catch (e) { setMsg("userMsg", e.message, false); return; }
         document.getElementById("editUserId").value = u.id;
         document.getElementById("editUserNameLabel").textContent = u.username;
         document.getElementById("editUserUsername").value = u.username;
-        document.getElementById("editUserEmail").value = u.email;
-        document.getElementById("editUserSource").value = u.source;
+        document.getElementById("editUserDisplayName").value = u.displayName || "";
+        document.getElementById("editUserEmail").value = u.email || "";
+        document.getElementById("editUserPhone").value = u.phone || "";
+        document.getElementById("editUserSource").value = u.sourceSystem;
+        document.getElementById("editUserSourceUserId").value = u.sourceUserId || "";
         document.getElementById("editUserStatus").value = u.status;
         document.getElementById("editUserComment").checked = !!u.commentAllowed;
         document.getElementById("editUserUpload").checked = !!u.uploadAllowed;
@@ -999,16 +1153,21 @@
     }
     async function saveEditPlatformUser() {
         const id = document.getElementById("editUserId").value;
+        const sourceUserId = document.getElementById("editUserSourceUserId").value.trim();
+        if (!sourceUserId) { setMsg("userMsg", "来源用户ID不能为空", false); return; }
         const payload = {
             username: document.getElementById("editUserUsername").value.trim(),
-            email: document.getElementById("editUserEmail").value.trim(),
-            source: document.getElementById("editUserSource").value,
+            displayName: document.getElementById("editUserDisplayName").value.trim() || null,
+            email: document.getElementById("editUserEmail").value.trim() || null,
+            phone: document.getElementById("editUserPhone").value.trim() || null,
+            sourceSystem: document.getElementById("editUserSource").value,
+            sourceUserId,
             status: document.getElementById("editUserStatus").value,
             commentAllowed: document.getElementById("editUserComment").checked,
             uploadAllowed: document.getElementById("editUserUpload").checked
         };
         try {
-            await api("/api/admin/platform-users/" + id, { method: "PUT", body: JSON.stringify(payload) });
+            await api("/api/admin/unified-users/" + id, { method: "PUT", body: JSON.stringify(payload) });
             setMsg("userMsg", "已保存", true);
             cancelEditUser();
             await loadPlatformUsers();
@@ -1017,7 +1176,7 @@
     async function deletePlatformUser(id, username) {
         if (!confirm("确定删除平台用户 " + username + " ？其关联行为记录将一并删除。")) return;
         try {
-            await api("/api/admin/platform-users/" + id, { method: "DELETE" });
+            await api("/api/admin/unified-users/" + id, { method: "DELETE" });
             setMsg("userMsg", "已删除", true);
             await loadPlatformUsers();
         } catch (e) { setMsg("userMsg", e.message, false); }
@@ -1030,7 +1189,7 @@
         ids.forEach(x => sp.append("ids", String(x)));
         sp.set("status", st);
         try {
-            await api("/api/admin/platform-users/batch/status?" + sp.toString(), { method: "PATCH" });
+            await api("/api/admin/unified-users/batch/status?" + sp.toString(), { method: "PATCH" });
             setMsg("userMsg", "批量状态已更新", true);
             await loadPlatformUsers();
         } catch (e) { setMsg("userMsg", e.message, false); }
@@ -1040,7 +1199,7 @@
         if (!ids.length) { setMsg("userMsg", "请先勾选用户", false); return; }
         if (!confirm("确定删除选中的 " + ids.length + " 个用户？此操作不可恢复。")) return;
         try {
-            await api("/api/admin/platform-users/batch", { method: "DELETE", body: JSON.stringify({ ids }) });
+            await api("/api/admin/unified-users/batch", { method: "DELETE", body: JSON.stringify({ ids }) });
             setMsg("userMsg", "已批量删除", true);
             await loadPlatformUsers();
         } catch (e) { setMsg("userMsg", e.message, false); }
@@ -1048,42 +1207,218 @@
 
     async function createPlatformUser() {
         try {
+            const sourceUserId = document.getElementById("newUserSourceUserId").value.trim();
+            if (!sourceUserId) { setMsg("userMsg", "来源用户ID不能为空", false); return; }
             const payload = {
                 username: document.getElementById("newUserUsername").value.trim(),
-                email: document.getElementById("newUserEmail").value.trim(),
-                source: document.getElementById("newUserSource").value
+                displayName: document.getElementById("newUserDisplayName").value.trim() || null,
+                email: document.getElementById("newUserEmail").value.trim() || null,
+                phone: document.getElementById("newUserPhone").value.trim() || null,
+                sourceSystem: document.getElementById("newUserSource").value,
+                sourceUserId
             };
-            await api("/api/admin/platform-users", { method: "POST", body: JSON.stringify(payload) });
-            setMsg("userMsg", "创建平台用户成功");
+            await api("/api/admin/unified-users", { method: "POST", body: JSON.stringify(payload) });
+            setMsg("userMsg", "创建统一用户成功");
+            document.getElementById("newUserUsername").value = "";
+            document.getElementById("newUserDisplayName").value = "";
+            document.getElementById("newUserEmail").value = "";
+            document.getElementById("newUserPhone").value = "";
+            document.getElementById("newUserSourceUserId").value = "";
             await loadPlatformUsers();
         } catch (e) { setMsg("userMsg", e.message, false); }
     }
 
-    async function loadLogs() {
+    let userBehaviorUserId = null;
+    let userBehaviorPage = 0;
+    const userBehaviorSize = 20;
+    function openUserBehaviorModal(userId, username) {
+        userBehaviorUserId = userId;
+        userBehaviorPage = 0;
+        const hint = document.getElementById("userBehaviorModalHint");
+        if (hint) hint.textContent = `用户 ${username || userId}（ID=${userId}）行为记录`;
+        const m = document.getElementById("userBehaviorModal");
+        if (m) {
+            m.classList.add("open");
+            m.setAttribute("aria-hidden", "false");
+        }
+        resetUserBehaviorFilters(false);
+        loadUserBehaviors(0);
+    }
+    function closeUserBehaviorModal() {
+        const m = document.getElementById("userBehaviorModal");
+        if (m) {
+            m.classList.remove("open");
+            m.setAttribute("aria-hidden", "true");
+        }
+        userBehaviorUserId = null;
+        const msg = document.getElementById("userBehaviorMsg");
+        if (msg) { msg.textContent = ""; msg.className = "msg"; }
+    }
+    function resetUserBehaviorFilters(reload = true) {
+        const ids = ["behaviorFilterType", "behaviorFilterFrom", "behaviorFilterTo"];
+        ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
+        if (reload && userBehaviorUserId != null) loadUserBehaviors(0);
+    }
+    function buildUserBehaviorQuery() {
+        const p = new URLSearchParams();
+        p.set("page", String(userBehaviorPage));
+        p.set("size", String(userBehaviorSize));
+        const t = document.getElementById("behaviorFilterType").value.trim();
+        const from = localDateTimeToApi(document.getElementById("behaviorFilterFrom").value);
+        const to = localDateTimeToApi(document.getElementById("behaviorFilterTo").value);
+        if (t) p.set("type", t);
+        if (from) p.set("from", from);
+        if (to) p.set("to", to);
+        return p;
+    }
+    async function loadUserBehaviors(page) {
+        if (userBehaviorUserId == null) return;
+        if (typeof page === "number" && !Number.isNaN(page)) userBehaviorPage = Math.max(0, page);
         try {
-            const data = await api("/api/admin/logs");
-            document.getElementById("logTable").innerHTML =
-                "<tr><th>ID</th><th>操作人</th><th>类型</th><th>对象</th><th>详情</th><th>时间</th></tr>" +
-                data.map(x => `<tr><td>${x.id}</td><td>${x.operator}</td><td><span class="badge">${operationTypeToZh(x.operationType)}</span></td><td>${x.operationTarget}</td><td>${x.details || ""}</td><td>${x.operationTime || ""}</td></tr>`).join("");
-        } catch (e) { alert("日志加载失败: " + e.message); }
+            const p = buildUserBehaviorQuery();
+            const data = await api(`/api/admin/unified-users/${userBehaviorUserId}/behaviors?` + p.toString());
+            const list = data.content || [];
+            const total = data.totalElements != null ? data.totalElements : list.length;
+            if (data.number != null) userBehaviorPage = data.number;
+            const table = document.getElementById("userBehaviorTable");
+            if (table) {
+                table.innerHTML =
+                    "<tr><th>ID</th><th>类型</th><th>内容</th><th>来源系统</th><th>来源记录ID</th><th>时间</th></tr>" +
+                    list.map(x => `<tr><td>${x.id}</td><td>${x.behaviorType || ""}</td><td>${x.behaviorContent || ""}</td><td>${x.sourceSystem || ""}</td><td>${x.sourceRecordId || ""}</td><td>${x.behaviorTime || ""}</td></tr>`).join("");
+            }
+            const m = document.getElementById("userBehaviorMsg");
+            if (m) { m.textContent = `共 ${total} 条行为记录（第 ${userBehaviorPage + 1} 页）`; m.className = "msg ok"; }
+        } catch (e) {
+            const m = document.getElementById("userBehaviorMsg");
+            if (m) { m.textContent = e.message; m.className = "msg err"; }
+        }
+    }
+    async function createUserBehavior() {
+        if (userBehaviorUserId == null) return;
+        const behaviorType = document.getElementById("newBehaviorType").value.trim();
+        const sourceSystem = document.getElementById("newBehaviorSourceSystem").value.trim();
+        if (!behaviorType || !sourceSystem) {
+            const m = document.getElementById("userBehaviorMsg");
+            if (m) { m.textContent = "行为类型和来源系统不能为空"; m.className = "msg err"; }
+            return;
+        }
+        try {
+            const payload = {
+                behaviorType,
+                behaviorContent: document.getElementById("newBehaviorContent").value.trim() || null,
+                sourceSystem,
+                sourceRecordId: document.getElementById("newBehaviorSourceRecordId").value.trim() || null
+            };
+            await api(`/api/admin/unified-users/${userBehaviorUserId}/behaviors`, { method: "POST", body: JSON.stringify(payload) });
+            ["newBehaviorType","newBehaviorContent","newBehaviorSourceSystem","newBehaviorSourceRecordId"].forEach(id => {
+                const el = document.getElementById(id); if (el) el.value = "";
+            });
+            await loadUserBehaviors(0);
+        } catch (e) {
+            const m = document.getElementById("userBehaviorMsg");
+            if (m) { m.textContent = e.message; m.className = "msg err"; }
+        }
     }
 
-    async function loadLoginLogs() {
-        try {
-            const data = await api("/api/admin/logs/login");
-            document.getElementById("logTable").innerHTML =
-                "<tr><th>ID</th><th>用户名</th><th>结果</th><th>IP</th><th>时间</th></tr>" +
-                data.map(x => `<tr><td>${x.id}</td><td>${x.username}</td><td>${x.result}</td><td>${x.ipAddress || ""}</td><td>${x.loginTime || ""}</td></tr>`).join("");
-        } catch (e) { alert("登录日志加载失败: " + e.message); }
+    let currentLogType = "operation";
+    function buildLogFilterQuery() {
+        const p = new URLSearchParams();
+        const operator = document.getElementById("logFilterOperator").value.trim();
+        const type = document.getElementById("logFilterType").value.trim();
+        const keyword = document.getElementById("logFilterKeyword").value.trim();
+        const from = localDateTimeToApi(document.getElementById("logFilterFrom").value);
+        const to = localDateTimeToApi(document.getElementById("logFilterTo").value);
+        if (operator) p.set(currentLogType === "login" ? "username" : "operator", operator);
+        if (type) {
+            if (currentLogType === "operation") p.set("operationType", type);
+            else if (currentLogType === "system") p.set("eventType", type);
+            else if (currentLogType === "login") p.set("result", type);
+            else if (currentLogType === "data-change") p.set("changeType", type);
+            else p.set("type", type);
+        }
+        if (keyword) p.set("keyword", keyword);
+        if (from) p.set("from", from);
+        if (to) p.set("to", to);
+        return p;
     }
-
-    async function loadDataChangeLogs() {
+    function resetLogFilters() {
+        ["logFilterOperator", "logFilterType", "logFilterKeyword", "logFilterFrom", "logFilterTo"].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = "";
+        });
+        reloadCurrentLogType();
+    }
+    function reloadCurrentLogType() {
+        loadLogs(currentLogType);
+    }
+    async function exportCurrentLogs() {
+        const suffixMap = {
+            operation: "operation",
+            system: "system",
+            security: "security"
+        };
+        const suffix = suffixMap[currentLogType];
+        if (!suffix) { setMsg("logMsg", "当前日志类型不支持导出，请切换到操作/系统/安全日志", false); return; }
+        const p = buildLogFilterQuery();
+        const url = `/api/admin/logs/export/${suffix}${p.toString() ? "?" + p.toString() : ""}`;
         try {
-            const data = await api("/api/admin/logs/data-change");
-            document.getElementById("logTable").innerHTML =
-                "<tr><th>ID</th><th>操作人</th><th>变更类型</th><th>对象类型</th><th>对象ID</th><th>详情</th><th>时间</th></tr>" +
-                data.map(x => `<tr><td>${x.id}</td><td>${x.operator}</td><td>${x.changeType}</td><td>${x.targetType}</td><td>${x.targetId}</td><td>${x.detail || ""}</td><td>${x.changeTime || ""}</td></tr>`).join("");
-        } catch (e) { alert("数据修改日志加载失败: " + e.message); }
+            const resp = await fetch(url, { headers: { "Authorization": "Bearer " + jwtToken } });
+            if (!resp.ok) throw new Error("导出失败");
+            const blob = await resp.blob();
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = `${suffix}-logs.csv`;
+            a.click();
+            URL.revokeObjectURL(a.href);
+            setMsg("logMsg", "导出已开始", true);
+        } catch (e) { setMsg("logMsg", e.message, false); }
+    }
+    async function loadLogs(type = "operation") {
+        currentLogType = type;
+        const p = buildLogFilterQuery();
+        const qs = p.toString() ? ("?" + p.toString()) : "";
+        try {
+            if (type === "operation") {
+                const data = await api("/api/admin/logs" + qs);
+                document.getElementById("logTable").innerHTML =
+                    "<tr><th>ID</th><th>操作人</th><th>类型</th><th>对象</th><th>详情</th><th>时间</th></tr>" +
+                    data.map(x => `<tr><td>${x.id}</td><td>${x.operator}</td><td><span class="badge">${operationTypeToZh(x.operationType)}</span></td><td>${x.operationTarget}</td><td>${x.details || ""}</td><td>${x.operationTime || ""}</td></tr>`).join("");
+                setMsg("logMsg", "操作日志已加载", true);
+                return;
+            }
+            if (type === "system") {
+                const data = await api("/api/admin/logs/system" + qs);
+                document.getElementById("logTable").innerHTML =
+                    "<tr><th>ID</th><th>级别</th><th>事件类型</th><th>来源</th><th>信息</th><th>时间</th></tr>" +
+                    data.map(x => `<tr><td>${x.id}</td><td>${x.level || ""}</td><td>${x.eventType || ""}</td><td>${x.source || ""}</td><td>${x.message || ""}</td><td>${x.logTime || ""}</td></tr>`).join("");
+                setMsg("logMsg", "系统日志已加载", true);
+                return;
+            }
+            if (type === "security") {
+                const data = await api("/api/admin/logs/security" + qs);
+                document.getElementById("logTable").innerHTML =
+                    "<tr><th>分类</th><th>操作人</th><th>类型</th><th>对象</th><th>详情</th><th>时间</th></tr>" +
+                    data.map(x => `<tr><td>${x.category || ""}</td><td>${x.operator || ""}</td><td>${x.type || ""}</td><td>${x.target || ""}</td><td>${x.detail || ""}</td><td>${x.time || ""}</td></tr>`).join("");
+                setMsg("logMsg", "安全日志已加载", true);
+                return;
+            }
+            if (type === "login") {
+                const data = await api("/api/admin/logs/login" + qs);
+                document.getElementById("logTable").innerHTML =
+                    "<tr><th>ID</th><th>用户名</th><th>结果</th><th>IP</th><th>时间</th></tr>" +
+                    data.map(x => `<tr><td>${x.id}</td><td>${x.username}</td><td>${x.result}</td><td>${x.ipAddress || ""}</td><td>${x.loginTime || ""}</td></tr>`).join("");
+                setMsg("logMsg", "登录日志已加载", true);
+                return;
+            }
+            if (type === "data-change") {
+                const data = await api("/api/admin/logs/data-change" + qs);
+                document.getElementById("logTable").innerHTML =
+                    "<tr><th>ID</th><th>操作人</th><th>变更类型</th><th>对象类型</th><th>对象ID</th><th>详情</th><th>时间</th></tr>" +
+                    data.map(x => `<tr><td>${x.id}</td><td>${x.operator}</td><td>${x.changeType}</td><td>${x.targetType}</td><td>${x.targetId}</td><td>${x.detail || ""}</td><td>${x.changeTime || ""}</td></tr>`).join("");
+                setMsg("logMsg", "数据变更日志已加载", true);
+                return;
+            }
+        } catch (e) { setMsg("logMsg", e.message, false); }
     }
 
     function goToReviewQueueWithStatus(status) {
@@ -1103,16 +1438,90 @@
     function goToPendingReviews() { goToReviewQueueWithStatus("PENDING"); }
     function goToRecheckReviews() { goToReviewQueueWithStatus("RECHECK"); }
 
+    function renderMiniLineSvg(values, color = "#2563eb", labels = []) {
+        const arr = (values || []).map(v => Number(v || 0));
+        if (!arr.length) return "<div class=\"muted\" style=\"font-size:12px;\">暂无数据</div>";
+        const w = 560, h = 150, p = 14, left = 44, right = 18, bottom = 26, top = 10;
+        const min = Math.min(...arr), max = Math.max(...arr);
+        const span = Math.max(1, max - min);
+        const pts = arr.map((v, i) => {
+            const x = left + (i * (w - left - right) / Math.max(1, arr.length - 1));
+            const y = h - bottom - ((v - min) * (h - top - bottom) / span);
+            return `${x.toFixed(1)},${y.toFixed(1)}`;
+        }).join(" ");
+        const yMid = min + span / 2;
+        const yMidPos = h - bottom - ((yMid - min) * (h - top - bottom) / span);
+        const xStartLabel = labels.length ? labels[0] : "起点";
+        const xEndLabel = labels.length ? labels[labels.length - 1] : "终点";
+        return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;">
+            <line x1="${left}" y1="${top}" x2="${left}" y2="${h - bottom}" stroke="#94a3b8" stroke-width="1"/>
+            <line x1="${left}" y1="${h - bottom}" x2="${w - right}" y2="${h - bottom}" stroke="#94a3b8" stroke-width="1"/>
+            <line x1="${left}" y1="${top}" x2="${w - right}" y2="${top}" stroke="#e2e8f0" stroke-width="1"/>
+            <line x1="${left}" y1="${yMidPos.toFixed(1)}" x2="${w - right}" y2="${yMidPos.toFixed(1)}" stroke="#e2e8f0" stroke-width="1"/>
+            <line x1="${left}" y1="${h - bottom}" x2="${w - right}" y2="${h - bottom}" stroke="#e2e8f0" stroke-width="1"/>
+            <text x="${left - 6}" y="${top + 4}" text-anchor="end" font-size="11" fill="#64748b">${max}</text>
+            <text x="${left - 6}" y="${yMidPos + 4}" text-anchor="end" font-size="11" fill="#64748b">${Math.round(yMid * 100) / 100}</text>
+            <text x="${left - 6}" y="${h - bottom + 4}" text-anchor="end" font-size="11" fill="#64748b">${min}</text>
+            <text x="${left}" y="${h - 6}" text-anchor="start" font-size="11" fill="#64748b">${xStartLabel}</text>
+            <text x="${w - right}" y="${h - 6}" text-anchor="end" font-size="11" fill="#64748b">${xEndLabel}</text>
+            <polyline fill="none" stroke="${color}" stroke-width="2.5" points="${pts}"/>
+        </svg>`;
+    }
+
+    function renderAccessTrendCharts(data) {
+        const wrap = document.getElementById("dashboardAccessCharts");
+        const sum = document.getElementById("dashboardAccessSummary");
+        if (!wrap) return;
+        const day = data.accessTrendDay || {};
+        const week = data.accessTrendWeek || {};
+        const month = data.accessTrendMonth || {};
+        const series = day.series || {};
+        const systems = Object.keys(series);
+        if (sum) sum.textContent = systems.length ? `统计子系统：${systems.join("、")}` : "暂无来源子系统数据";
+        const pickFirstSeries = (obj) => {
+            const s = obj.series || {};
+            const k = Object.keys(s)[0];
+            return { vals: k ? s[k] : [], labels: obj.labels || [] };
+        };
+        const dayS = pickFirstSeries(day);
+        const weekS = pickFirstSeries(week);
+        const monthS = pickFirstSeries(month);
+        wrap.innerHTML =
+            `<div class="muted" style="font-size:12px; margin:4px 0;">日趋势（近7天）</div>${renderMiniLineSvg(dayS.vals, "#2563eb", dayS.labels)}` +
+            `<div class="muted" style="font-size:12px; margin:8px 0 4px;">周趋势（近8周）</div>${renderMiniLineSvg(weekS.vals, "#16a34a", weekS.labels)}` +
+            `<div class="muted" style="font-size:12px; margin:8px 0 4px;">月趋势（近6月）</div>${renderMiniLineSvg(monthS.vals, "#dc2626", monthS.labels)}`;
+    }
+
+    function renderGrowthTrendCharts(data) {
+        const wrap = document.getElementById("dashboardGrowthCharts");
+        if (!wrap) return;
+        const g = data.growthTrend || {};
+        const labels = g.labels || [];
+        const users = g.users || [];
+        const contents = g.contents || [];
+        const artifacts = g.artifacts || [];
+        wrap.innerHTML =
+            `<div class="muted" style="font-size:12px; margin:4px 0;">用户增长（窗口累计）</div>${renderMiniLineSvg(users, "#2563eb", labels)}` +
+            `<div class="muted" style="font-size:12px; margin:8px 0 4px;">内容增长（窗口累计）</div>${renderMiniLineSvg(contents, "#16a34a", labels)}` +
+            `<div class="muted" style="font-size:12px; margin:8px 0 4px;">文物增长（窗口累计）</div>${renderMiniLineSvg(artifacts, "#dc2626", labels)}`;
+    }
+
     async function loadDashboard() {
         try {
             const data = await api("/api/admin/dashboard/overview");
             const trend = (data.loginTrend7d || []).map(x => `${x.date}:${x.count}`).join(" | ");
             const pending = data.pendingReviews != null ? data.pendingReviews : 0;
             const recheck = data.recheckReviews != null ? data.recheckReviews : 0;
+            const online = data.onlineUsers != null ? data.onlineUsers : 0;
+            const todaySubmits = data.todayContentSubmissions != null ? data.todayContentSubmissions : 0;
+            const backlog = data.queueBacklog != null ? data.queueBacklog : (pending + recheck);
             const fullBadges = `
+                <span class="badge">在线用户(15分钟): ${online}</span>
                 <span class="badge">总用户数: ${data.totalUsers}</span>
                 <span class="badge">今日新增用户: ${data.todayNewUsers}</span>
+                <span class="badge">今日内容提交量: ${todaySubmits}</span>
                 <span class="badge">待审核: ${pending}</span>
+                <span class="badge">队列积压量: ${backlog}</span>
                 <span class="badge">文物总数: ${data.totalArtifacts}</span>
                 <span class="badge">近7天登录趋势: ${trend}</span>
             `;
@@ -1141,6 +1550,8 @@
             if (logCards) {
                 logCards.innerHTML = fullBadges;
             }
+            renderAccessTrendCharts(data);
+            renderGrowthTrendCharts(data);
         } catch (e) { console.log(e); }
     }
 
@@ -1329,10 +1740,305 @@
         } catch (e) { setMsg("integrationMsg", e.message, false); }
     }
 
+    let kgPaths = {
+        entities: "/api/v1/kg/entities",
+        relations: "/api/v1/kg/relations",
+        triples: "/api/v1/kg/triples",
+        syncJobs: "/api/v1/kg/sync/jobs"
+    };
+    function kgResourceTypeToZh(t) {
+        if (t === "entities") return "实体";
+        if (t === "relations") return "关系";
+        if (t === "triples") return "三元组";
+        return t;
+    }
+    function currentKgResourceType() {
+        const s = document.getElementById("kgResourceType");
+        return (s && s.value) || "entities";
+    }
+    function kgResourcePath(type) {
+        if (type === "entities") return kgPaths.entities;
+        if (type === "relations") return kgPaths.relations;
+        return kgPaths.triples;
+    }
+    async function kgForward(subPath, method = "GET", body = null) {
+        return await api("/api/admin/integrations/proxy/forward", {
+            method: "POST",
+            body: JSON.stringify({ system: "kg", subPath, method, body })
+        });
+    }
+    function setKgOut(obj) {
+        const el = document.getElementById("kgEndpointOut");
+        if (!el) return;
+        el.textContent = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
+    }
+    function escapeHtml(v) {
+        return String(v == null ? "" : v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+    async function loadKgEndpoints() {
+        try {
+            const ep = await api("/api/admin/integrations/endpoints");
+            if (ep && ep.paths) {
+                if (ep.paths.kgEntities) kgPaths.entities = ep.paths.kgEntities;
+                if (ep.paths.kgRelations) kgPaths.relations = ep.paths.kgRelations;
+                if (ep.paths.kgTriples) kgPaths.triples = ep.paths.kgTriples;
+                if (ep.paths.kgSyncJobs) kgPaths.syncJobs = ep.paths.kgSyncJobs;
+            }
+            setKgOut({
+                mode: ep && ep.mode,
+                kgSystemBaseUrl: ep && ep.kgSystemBaseUrl,
+                kgPaths
+            });
+            setMsg("kgMsg", "KG 对接配置已加载", true);
+        } catch (e) { setMsg("kgMsg", e.message, false); }
+    }
+    function fillKgSamplePayload() {
+        const type = currentKgResourceType();
+        const el = document.getElementById("kgEditPayload");
+        if (!el) return;
+        if (type === "entities") el.value = JSON.stringify({ name: "示例实体", type: "Artifact", properties: { era: "清代" } }, null, 2);
+        else if (type === "relations") el.value = JSON.stringify({ name: "属于", fromType: "Artifact", toType: "Dynasty" }, null, 2);
+        else el.value = JSON.stringify({ subjectId: 1, predicateId: 2, objectId: 3, properties: { source: "admin-backend" } }, null, 2);
+    }
+    function fillKgPayloadFromEncoded(encoded) {
+        try {
+            const json = JSON.parse(decodeURIComponent(encoded));
+            const el = document.getElementById("kgEditPayload");
+            if (el) el.value = JSON.stringify(json, null, 2);
+            if (json && json.id != null) {
+                const del = document.getElementById("kgDeleteId");
+                if (del) del.value = json.id;
+            }
+        } catch (_) { }
+    }
+    async function loadKgResourceList() {
+        const type = currentKgResourceType();
+        const table = document.getElementById("kgTable");
+        if (!table) return;
+        try {
+            const res = await kgForward(kgResourcePath(type), "GET", null);
+            const rows = Array.isArray(res && res.responseBody) ? res.responseBody : [];
+            table.innerHTML = "<tr><th>ID</th><th>内容(JSON)</th><th>操作</th></tr>" + rows.map(x => {
+                const encoded = encodeURIComponent(JSON.stringify(x || {}));
+                const id = x && x.id != null ? x.id : "";
+                const pretty = escapeHtml(JSON.stringify(x, null, 2));
+                return `<tr><td>${id}</td><td><pre style="margin:0; white-space:pre-wrap; font-size:12px;">${pretty}</pre></td><td><button class="btn btn-light" onclick="fillKgPayloadFromEncoded('${encoded}')">填入编辑器</button></td></tr>`;
+            }).join("");
+            setMsg("kgMsg", `已加载${kgResourceTypeToZh(type)}列表（${rows.length} 条）`, true);
+        } catch (e) {
+            table.innerHTML = "<tr><th>ID</th><th>内容(JSON)</th><th>操作</th></tr>";
+            setMsg("kgMsg", e.message, false);
+        }
+    }
+    async function saveKgResource() {
+        const type = currentKgResourceType();
+        const ta = document.getElementById("kgEditPayload");
+        if (!ta || !ta.value.trim()) { setMsg("kgMsg", "请先填写 JSON 内容", false); return; }
+        let payload;
+        try {
+            payload = JSON.parse(ta.value);
+        } catch (_) {
+            setMsg("kgMsg", "JSON 格式不正确", false);
+            return;
+        }
+        try {
+            if (payload.id != null && payload.id !== "") {
+                await kgForward(`${kgResourcePath(type)}/${encodeURIComponent(payload.id)}`, "PUT", payload);
+                setMsg("kgMsg", `${kgResourceTypeToZh(type)}更新成功`, true);
+            } else {
+                await kgForward(kgResourcePath(type), "POST", payload);
+                setMsg("kgMsg", `${kgResourceTypeToZh(type)}新增成功`, true);
+            }
+            await loadKgResourceList();
+        } catch (e) { setMsg("kgMsg", e.message, false); }
+    }
+    async function deleteKgResourceById() {
+        const type = currentKgResourceType();
+        const el = document.getElementById("kgDeleteId");
+        const id = el ? el.value.trim() : "";
+        if (!id) { setMsg("kgMsg", "请输入要删除的 ID", false); return; }
+        if (!confirm(`确定删除${kgResourceTypeToZh(type)} ID=${id}？`)) return;
+        try {
+            await kgForward(`${kgResourcePath(type)}/${encodeURIComponent(id)}`, "DELETE", {});
+            setMsg("kgMsg", `${kgResourceTypeToZh(type)}删除成功`, true);
+            await loadKgResourceList();
+        } catch (e) { setMsg("kgMsg", e.message, false); }
+    }
+    async function loadKgSyncJobs() {
+        const table = document.getElementById("kgSyncJobTable");
+        if (!table) return;
+        try {
+            const res = await kgForward(kgPaths.syncJobs, "GET", null);
+            const rows = Array.isArray(res && res.responseBody) ? res.responseBody : [];
+            table.innerHTML = "<tr><th>ID</th><th>状态</th><th>开始时间</th><th>结束时间</th><th>详情</th></tr>" + rows.map(x =>
+                `<tr><td>${x.id || ""}</td><td>${x.status || ""}</td><td>${x.startedAt || x.startTime || ""}</td><td>${x.finishedAt || x.endTime || ""}</td><td>${x.message || x.detail || ""}</td></tr>`
+            ).join("");
+            setMsg("kgMsg", `同步任务已刷新（${rows.length} 条）`, true);
+        } catch (e) {
+            table.innerHTML = "<tr><th>ID</th><th>状态</th><th>开始时间</th><th>结束时间</th><th>详情</th></tr>";
+            setMsg("kgMsg", e.message, false);
+        }
+    }
+    async function triggerKgSync() {
+        try {
+            await kgForward(kgPaths.syncJobs, "POST", { triggerBy: "admin-backend" });
+            setMsg("kgMsg", "已触发图数据库同步任务", true);
+            await loadKgSyncJobs();
+        } catch (e) { setMsg("kgMsg", e.message, false); }
+    }
+
+    async function loadBackupConfig() {
+        try {
+            const c = await api("/api/admin/backup/config");
+            const auto = document.getElementById("backupAutoEnabled");
+            const cron = document.getElementById("backupCronExpression");
+            const days = document.getElementById("backupRetentionDays");
+            const type = document.getElementById("backupType");
+            if (auto) auto.checked = !!c.autoEnabled;
+            if (cron) cron.value = c.cronExpression || "0 0 2 * * *";
+            if (days) days.value = c.retentionDays || 30;
+            if (type && !type.dataset.bound) {
+                type.addEventListener("change", renderBackupTableSelection);
+                type.dataset.bound = "1";
+            }
+            renderBackupTableSelection();
+        } catch (e) { setMsg("backupMsg", e.message, false); }
+    }
+    async function loadBackupTables() {
+        try {
+            backupTableOptions = await api("/api/admin/backup/tables");
+            const sel = document.getElementById("backupTableSelect");
+            if (sel) {
+                sel.innerHTML = (backupTableOptions || []).map(t => `<option value="${t}">${t}（${backupTableZhName(t)}）</option>`).join("");
+            }
+            renderBackupTableSelection();
+        } catch (e) { setMsg("backupMsg", e.message, false); }
+    }
+    function backupTableZhName(tableName) {
+        const m = {
+            admin_users: "后台管理员",
+            platform_users: "平台用户",
+            unified_users: "统一用户主表",
+            unified_user_behaviors: "统一用户行为记录",
+            unified_user_permission_audit: "统一用户权限审计",
+            user_behavior_records: "平台用户行为记录",
+            review_content: "内容审核数据",
+            review_strategy_config: "自动审核策略",
+            sensitive_word: "敏感词库",
+            operation_logs: "操作日志",
+            login_logs: "登录日志",
+            data_change_logs: "数据变更日志",
+            artifacts: "文物数据",
+            role_definition: "角色定义",
+            permission_definition: "权限定义",
+            admin_role_assignment: "管理员角色分配",
+            role_permission_assignment: "角色权限分配",
+            backup_records: "备份记录",
+            backup_task_config: "备份任务配置"
+        };
+        return m[tableName] || "业务数据表";
+    }
+    function renderBackupTableSelection() {
+        const type = document.getElementById("backupType") && document.getElementById("backupType").value;
+        const show = type === "TABLES";
+        const sel = document.getElementById("backupTableSelect");
+        const addBtn = document.getElementById("backupAddTableBtn");
+        const rmBtn = document.getElementById("backupRemoveTableBtn");
+        const input = document.getElementById("backupTables");
+        if (sel) sel.style.display = show ? "block" : "none";
+        if (addBtn) addBtn.style.display = show ? "inline-block" : "none";
+        if (rmBtn) rmBtn.style.display = show ? "inline-block" : "none";
+        if (input) {
+            input.style.display = show ? "block" : "none";
+            if (!show) {
+                backupSelectedTables = [];
+                input.value = "";
+            } else {
+                input.value = backupSelectedTables.join(",");
+            }
+        }
+    }
+    function addSelectedBackupTable() {
+        const sel = document.getElementById("backupTableSelect");
+        const input = document.getElementById("backupTables");
+        if (!sel || !input) return;
+        const t = sel.value;
+        if (!t) return;
+        if (!backupSelectedTables.includes(t)) backupSelectedTables.push(t);
+        input.value = backupSelectedTables.join(",");
+    }
+    function removeSelectedBackupTable() {
+        const sel = document.getElementById("backupTableSelect");
+        const input = document.getElementById("backupTables");
+        if (!sel || !input) return;
+        const t = sel.value;
+        if (!t) return;
+        backupSelectedTables = backupSelectedTables.filter(x => x !== t);
+        input.value = backupSelectedTables.join(",");
+    }
+    async function saveBackupConfig() {
+        try {
+            const payload = {
+                autoEnabled: !!document.getElementById("backupAutoEnabled").checked,
+                cronExpression: document.getElementById("backupCronExpression").value.trim() || null,
+                retentionDays: Number(document.getElementById("backupRetentionDays").value || 30)
+            };
+            await api("/api/admin/backup/config", { method: "PUT", body: JSON.stringify(payload) });
+            setMsg("backupMsg", "备份策略已保存", true);
+            await loadBackupConfig();
+        } catch (e) { setMsg("backupMsg", e.message, false); }
+    }
+    async function createManualBackup() {
+        try {
+            const type = document.getElementById("backupType").value;
+            const tables = type === "TABLES" ? backupSelectedTables.slice() : [];
+            if (type === "TABLES" && tables.length === 0) {
+                setMsg("backupMsg", "请选择至少一个数据表", false);
+                return;
+            }
+            const payload = { backupType: type, tables };
+            await api("/api/admin/backup/manual", { method: "POST", body: JSON.stringify(payload) });
+            setMsg("backupMsg", "手动备份已完成", true);
+            await loadBackupRecords();
+        } catch (e) { setMsg("backupMsg", e.message, false); }
+    }
+    async function loadBackupRecords() {
+        try {
+            const list = await api("/api/admin/backup/records");
+            const table = document.getElementById("backupTable");
+            if (!table) return;
+            table.innerHTML =
+                "<tr><th>ID</th><th>时间</th><th>类型</th><th>范围</th><th>大小(Byte)</th><th>操作人</th><th>状态</th><th>备注</th><th>操作</th></tr>" +
+                (list || []).map(x => `<tr><td>${x.id}</td><td>${x.backupTime || ""}</td><td>${x.backupType || ""}</td><td>${x.tableScope || "-"}</td><td>${x.fileSize || 0}</td><td>${x.operator || ""}</td><td>${x.status || ""}</td><td>${x.note || ""}</td><td><button class="btn btn-light" onclick="downloadBackup(${x.id})">下载</button> <button class="btn btn-danger" onclick="restoreBackup(${x.id})">恢复</button></td></tr>`).join("");
+        } catch (e) { setMsg("backupMsg", e.message, false); }
+    }
+    async function downloadBackup(id) {
+        try {
+            const resp = await fetch(`/api/admin/backup/records/${id}/download`, { headers: { "Authorization": "Bearer " + jwtToken } });
+            if (!resp.ok) throw new Error("下载失败");
+            const blob = await resp.blob();
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = `backup-${id}.bin`;
+            a.click();
+            URL.revokeObjectURL(a.href);
+            setMsg("backupMsg", "下载开始", true);
+        } catch (e) { setMsg("backupMsg", e.message, false); }
+    }
+    async function restoreBackup(id) {
+        const txt = prompt("恢复将覆盖当前数据。请输入 CONFIRM_RESTORE 确认：");
+        if (!txt) return;
+        try {
+            await api(`/api/admin/backup/restore/${id}`, { method: "POST", body: JSON.stringify({ confirmText: txt }) });
+            setMsg("backupMsg", "恢复完成", true);
+            await loadBackupRecords();
+        } catch (e) { setMsg("backupMsg", e.message, false); }
+    }
+
     function setMenuByRole(role) {
         const pages = {
-            SUPER_ADMIN: ["dashboardPage", "adminPage", "rbacPage", "userPage", "reviewPage", "artifactPage", "integrationPage", "logPage"],
-            DATA_ADMIN: ["artifactPage"],
+            SUPER_ADMIN: ["dashboardPage", "adminPage", "rbacPage", "userPage", "reviewPage", "artifactPage", "kgPage", "backupPage", "integrationPage", "logPage"],
+            DATA_ADMIN: ["artifactPage", "kgPage"],
             CONTENT_REVIEWER: ["dashboardPage", "reviewPage"]
         };
         const allow = new Set(pages[role] || ["dashboardPage", "logPage"]);
@@ -1717,8 +2423,11 @@
     }
     document.getElementById("rejectModal").addEventListener("click", (e) => { if (e.target.id === "rejectModal") { closeRejectModal(); } });
     document.getElementById("recheckModal").addEventListener("click", (e) => { if (e.target.id === "recheckModal") { closeRecheckModal(); } });
+    document.getElementById("userBehaviorModal").addEventListener("click", (e) => { if (e.target.id === "userBehaviorModal") { closeUserBehaviorModal(); } });
     document.addEventListener("keydown", (e) => {
         if (e.key !== "Escape") return;
+        const ub = document.getElementById("userBehaviorModal");
+        if (ub && ub.classList.contains("open")) { closeUserBehaviorModal(); return; }
         const recheck = document.getElementById("recheckModal");
         if (recheck.classList.contains("open")) { closeRecheckModal(); return; }
         const m = document.getElementById("rejectModal");

@@ -29,12 +29,15 @@ public class IntegrationController {
         data.put("mode", integrationProperties.getMode());
         data.put("userSystemBaseUrl", integrationProperties.getUserSystemBaseUrl());
         data.put("artifactSystemBaseUrl", integrationProperties.getArtifactSystemBaseUrl());
+        data.put("kgSystemBaseUrl", integrationProperties.getKgSystemBaseUrl());
         data.put("paths", integrationProperties.getPaths());
         data.put("templateApis", new String[]{
                 "GET  /api/admin/integrations/proxy/users",
                 "GET  /api/admin/integrations/proxy/artifacts",
                 "POST /api/admin/integrations/proxy/review",
-                "POST /api/admin/integrations/proxy/forward"
+                "POST /api/admin/integrations/proxy/forward",
+                "GET  KG entities/relations/triples via forward(system=kg)",
+                "POST/PUT/PATCH/DELETE KG CRUD via forward(system=kg)"
         });
         return ApiResponse.ok(data);
     }
@@ -47,6 +50,7 @@ public class IntegrationController {
         data.put("mock", integrationProxyService.isMock());
         data.put("userSystemBaseUrl", integrationProperties.getUserSystemBaseUrl());
         data.put("artifactSystemBaseUrl", integrationProperties.getArtifactSystemBaseUrl());
+        data.put("kgSystemBaseUrl", integrationProperties.getKgSystemBaseUrl());
         data.put("paths", integrationProperties.getPaths());
         return ApiResponse.ok(data);
     }
