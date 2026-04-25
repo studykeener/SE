@@ -2,6 +2,10 @@ server:
   port: 8080
 
 spring:
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 25MB
   datasource:
     url: jdbc:mysql://localhost:3306/overseas_artifacts?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
     username: root
@@ -25,5 +29,11 @@ security:
     expire-seconds: 86400
 
 integration:
+  # mock: 不请求外网，返回固定模拟 JSON；real: 向以下 baseUrl 发起真实 HTTP
+  mode: mock
   user-system-base-url: http://localhost:9001
   artifact-system-base-url: http://localhost:9002
+  paths:
+    users: /api/v1/users
+    artifacts: /api/v1/artifacts
+    review-callback: /api/v1/content/review-result

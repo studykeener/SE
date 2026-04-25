@@ -7,4 +7,6 @@ import java.util.List;
 
 public interface UserBehaviorRecordRepository extends JpaRepository<UserBehaviorRecord, Long> {
     List<UserBehaviorRecord> findByPlatformUserIdOrderByBehaviorTimeDesc(Long platformUserId);
+
+    void deleteByPlatformUserId(Long platformUserId);
 }

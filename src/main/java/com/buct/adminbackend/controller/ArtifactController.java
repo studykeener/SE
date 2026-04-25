@@ -4,6 +4,7 @@ import com.buct.adminbackend.common.ApiResponse;
 import com.buct.adminbackend.dto.ArtifactUpsertRequest;
 import com.buct.adminbackend.entity.Artifact;
 import com.buct.adminbackend.repository.ArtifactRepository;
+import com.buct.adminbackend.service.ArtifactImportService;
 import com.buct.adminbackend.service.AuditLogService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -13,7 +14,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -25,6 +28,7 @@ public class ArtifactController {
 
     private final ArtifactRepository artifactRepository;
     private final AuditLogService auditLogService;
+    private final ArtifactImportService artifactImportService;
 
     @GetMapping
     @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN','CONTENT_REVIEWER')")
@@ -90,29 +94,10 @@ public class ArtifactController {
                 .body(bytes);
     }
 
-    @PostMapping("/import")
+    @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN')")
-    public ApiResponse<Integer> importCsv(@RequestBody String csvContent, Authentication auth) {
-        String[] lines = csvContent.split("\\r?\\n");
-        int count = 0;
-        for (int i = 1; i < lines.length; i++) {
-            String line = lines[i].trim();
-            if (line.isEmpty()) {
-                continue;
-            }
-            String[] parts = line.split(",", -1);
-            Artifact a = new Artifact();
-            a.setName(parts.length > 0 ? parts[0] : "未命名");
-            a.setPeriod(parts.length > 1 ? parts[1] : null);
-            a.setType(parts.length > 2 ? parts[2] : null);
-            a.setMaterial(parts.length > 3 ? parts[3] : null);
-            a.setSourceSystem(parts.length > 4 ? parts[4] : null);
-            a.setSourceId(parts.length > 5 ? parts[5] : null);
-            a.setKgSyncStatus(parts.length > 6 ? parts[6] : "PENDING");
-            a.setUpdatedAt(LocalDateTime.now());
-            artifactRepository.save(a);
-            count++;
-        }
+    public ApiResponse<Integer> importCsvFile(@RequestParam("file") MultipartFile file, Authentication auth) throws IOException {
+        int count = artifactImportService.importFromMultipartFile(file);
         auditLogService.logDataChange(auth.getName(), "IMPORT", "ARTIFACT", "-", "count=" + count);
         return ApiResponse.ok("导入成功", count);
     }

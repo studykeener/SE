@@ -46,6 +46,28 @@
         .page.active { display:block; }
         .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; background:#e5e7eb; }
         .muted { color:var(--muted); }
+        .file-label { display:inline-block; height:38px; line-height:36px; padding:0 12px; background:#e5e7eb; border-radius:8px; font-size:13px; cursor:pointer; }
+        .file-label input { display:none; }
+        .json-out { margin-top:10px; max-height:320px; overflow:auto; padding:12px; background:#0f172a; color:#e2e8f0; font-size:12px; line-height:1.45; border-radius:8px; white-space:pre-wrap; word-break:break-all; }
+        .modal-backdrop {
+            position: fixed; inset: 0; z-index: 20000; display: none; flex-direction: column;
+            align-items: center; justify-content: center; background: rgba(15, 23, 42, 0.45);
+            padding: 20px; overflow: auto; box-sizing: border-box;
+        }
+        .modal-backdrop.open { display: flex; }
+        .modal-backdrop, .modal-box { animation: none; transition: none; }
+        .modal-box {
+            width: 100%; max-width: 420px; background: var(--panel); border: 1px solid var(--line);
+            border-radius: 12px; padding: 20px; box-shadow: 0 20px 50px rgba(0,0,0,.2);
+        }
+        .modal-title { margin: 0 0 6px; font-size: 17px; }
+        .modal-textarea { width: 100%; min-height: 100px; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font: inherit; resize: vertical; box-sizing: border-box; }
+        .dashboard-pending-card {
+            display: block; max-width: 360px; border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px;
+            background: var(--panel); text-align: left; cursor: pointer; box-shadow: var(--shadow);
+        }
+        .dashboard-pending-card:hover { border-color: var(--primary); }
+        .dashboard-pending-card .num { font-size: 28px; font-weight: 800; color: var(--primary); line-height: 1.1; }
     </style>
 </head>
 <body>
@@ -53,13 +75,25 @@
     <div class="login-card">
         <h1 class="login-title">后台管理系统</h1>
         <p class="login-subtitle">海外藏中国文物知识管理与服务平台</p>
-        <input class="input" id="username" placeholder="管理员账号">
-        <input class="input" id="password" type="password" placeholder="管理员密码">
+        <p class="muted" style="font-size:13px; margin:0 0 8px;">默认超级管理员账号：<strong>admin</strong>　密码：<strong>123456</strong>（首次启动自动创建，勿删除该账号）</p>
+        <input class="input" id="username" placeholder="管理员账号" value="admin" autocomplete="username">
+        <input class="input" id="password" type="password" placeholder="密码" value="123456" autocomplete="current-password">
         <div class="btn-row">
             <button class="btn btn-primary" onclick="login()">登录</button>
-            <button class="btn btn-light" onclick="bootstrap()">首次初始化</button>
         </div>
         <p id="loginMsg" class="msg"></p>
+    </div>
+</div>
+
+<div id="rejectModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal-box" onclick="event.stopPropagation()">
+        <h3 class="modal-title">填写拒绝原因</h3>
+        <p class="muted" style="font-size:12px; margin:0 0 10px;">将记录在审核单中，不填写无法提交拒绝。</p>
+        <textarea id="rejectModalReason" class="modal-textarea" rows="4" placeholder="请说明理由…" maxlength="2000"></textarea>
+        <div class="btn-row" style="margin-top:12px; justify-content:flex-end;">
+            <button type="button" class="btn btn-light" onclick="closeRejectModal()">取消</button>
+            <button type="button" class="btn btn-danger" onclick="submitRejectModal()">确定拒绝</button>
+        </div>
     </div>
 </div>
 
@@ -74,6 +108,7 @@
                 <button class="menu-btn" data-page="userPage" onclick="switchPage('userPage', this)">平台用户管理</button>
                 <button class="menu-btn" data-page="reviewPage" onclick="switchPage('reviewPage', this)">内容审核</button>
                 <button class="menu-btn" data-page="artifactPage" onclick="switchPage('artifactPage', this)">文物数据管理</button>
+                <button class="menu-btn" data-page="integrationPage" onclick="switchPage('integrationPage', this)">子系统 API 代理</button>
                 <button class="menu-btn" data-page="logPage" onclick="switchPage('logPage', this)">日志管理</button>
             </div>
         </aside>
@@ -90,21 +125,59 @@
                     <div class="panel">
                         <h3>欢迎使用后台管理系统</h3>
                         <p class="muted">左侧菜单可切换模块，页面已按后台系统布局拆分，不再堆叠在一页。</p>
+                        <div class="toolbar" style="margin-top:10px;">
+                            <button type="button" class="btn btn-light" onclick="loadDashboard()">刷新统计</button>
+                        </div>
+                        <div id="dashboardOverviewStats" class="inline" style="margin-top:8px;"></div>
                     </div>
                 </div>
                 <div id="adminPage" class="page">
                     <div class="panel">
                         <h3>管理员管理</h3>
-                        <div class="toolbar"><button class="btn btn-light" onclick="loadAdmins()">刷新列表</button></div>
+                        <p class="muted" style="font-size:12px; margin-top:0;">仅超级管理员可访问。系统预置 <code>admin</code> 不可删除、不可降级、不可禁用。</p>
+                        <div class="toolbar">
+                            <input class="input" id="adminFilterUsername" placeholder="按用户名筛选" style="min-width:160px;">
+                            <select class="select" id="adminFilterRole" title="按角色筛选">
+                                <option value="">全部角色</option>
+                                <option value="SUPER_ADMIN">超级管理员</option>
+                                <option value="DATA_ADMIN">数据管理员</option>
+                                <option value="CONTENT_REVIEWER">内容审核员</option>
+                            </select>
+                            <select class="select" id="adminFilterStatus" title="按状态筛选">
+                                <option value="">全部状态</option>
+                                <option value="ENABLED">正常</option>
+                                <option value="DISABLED">禁用</option>
+                            </select>
+                            <button class="btn btn-primary" onclick="loadAdmins()">查询</button>
+                            <button class="btn btn-light" onclick="resetAdminFilters()">重置</button>
+                            <button class="btn btn-light" onclick="loadAdmins()">刷新列表</button>
+                        </div>
                         <div class="inline">
                             <input class="input" id="newAdminUsername" placeholder="新管理员用户名">
                             <input class="input" id="newAdminPassword" placeholder="新管理员密码">
                             <select class="select" id="newAdminRole">
-                                <option value="SUPER_ADMIN">SUPER_ADMIN</option>
-                                <option value="DATA_ADMIN">DATA_ADMIN</option>
-                                <option value="CONTENT_REVIEWER">CONTENT_REVIEWER</option>
+                                <option value="SUPER_ADMIN">超级管理员</option>
+                                <option value="DATA_ADMIN">数据管理员</option>
+                                <option value="CONTENT_REVIEWER">内容审核员</option>
                             </select>
                             <button class="btn btn-primary" onclick="createAdmin()">创建管理员</button>
+                        </div>
+                        <div class="inline" id="adminEditPanel" style="display:none; margin-top:8px; padding:10px; background:#f8fafc; border:1px solid var(--line); border-radius:8px; width:100%;">
+                            <span>修改 <strong id="editAdminNameLabel"></strong>：</span>
+                            <input type="hidden" id="editAdminId">
+                            <input type="hidden" id="editAdminUsername">
+                            <select class="select" id="editAdminRole" title="角色">
+                                <option value="SUPER_ADMIN">超级管理员</option>
+                                <option value="DATA_ADMIN">数据管理员</option>
+                                <option value="CONTENT_REVIEWER">内容审核员</option>
+                            </select>
+                            <select class="select" id="editAdminStatus" title="状态">
+                                <option value="ENABLED">正常</option>
+                                <option value="DISABLED">禁用</option>
+                            </select>
+                            <input class="input" id="editAdminPassword" placeholder="新密码（可留空不修改）" type="password" style="min-width:180px;">
+                            <button class="btn btn-primary" onclick="saveEditAdmin()">保存</button>
+                            <button class="btn btn-light" onclick="cancelEditAdmin()">取消</button>
                         </div>
                         <p id="adminMsg" class="msg"></p>
                         <table id="adminTable"></table>
@@ -141,40 +214,110 @@
                 <div id="userPage" class="page">
                     <div class="panel">
                         <h3>平台用户管理</h3>
-                        <div class="toolbar"><button class="btn btn-light" onclick="loadPlatformUsers()">刷新列表</button></div>
-                        <div class="inline">
+                        <p class="muted" style="font-size:12px; margin-top:0;">面向 Web / 掌上端前台用户。支持按条件筛选、批量启停与删除、单条编辑删除。</p>
+                        <div class="toolbar" style="margin-bottom:8px;">
+                            <input class="input" id="filterUserName" placeholder="用户名(模糊)">
+                            <select class="select" id="filterUserSource" title="来源">
+                                <option value="">全部来源</option>
+                                <option value="WEB">Web 端</option>
+                                <option value="APP">手机端</option>
+                            </select>
+                            <select class="select" id="filterUserStatus" title="状态">
+                                <option value="">全部状态</option>
+                                <option value="ENABLED">启用</option>
+                                <option value="DISABLED">禁用</option>
+                            </select>
+                            <input class="input" id="filterUserCreatedFrom" type="datetime-local" title="注册起">
+                            <input class="input" id="filterUserCreatedTo" type="datetime-local" title="注册止">
+                            <button class="btn btn-primary" onclick="loadPlatformUsers(0)">查询</button>
+                            <button class="btn btn-light" onclick="resetUserFilters()">重置</button>
+                            <button class="btn btn-light" onclick="loadPlatformUsers()">刷新</button>
+                        </div>
+                        <div class="toolbar" id="userBatchBar">
+                            <button class="btn btn-light" onclick="userBatchStatus('ENABLED')">批量启用</button>
+                            <button class="btn btn-light" onclick="userBatchStatus('DISABLED')">批量禁用</button>
+                            <button class="btn btn-danger" onclick="userBatchDelete()">批量删除</button>
+                        </div>
+                        <div class="inline" id="userCreateBar">
                             <input class="input" id="newUserUsername" placeholder="用户名">
                             <input class="input" id="newUserEmail" placeholder="邮箱">
                             <select class="select" id="newUserSource">
-                                <option value="WEB">WEB</option>
-                                <option value="APP">APP</option>
+                                <option value="WEB">Web 端</option>
+                                <option value="APP">手机端</option>
                             </select>
                             <button class="btn btn-primary" onclick="createPlatformUser()">创建用户</button>
                         </div>
+                        <div class="inline" id="userEditPanel" style="display:none; margin-top:8px; padding:10px; background:#f8fafc; border:1px solid var(--line); border-radius:8px; width:100%; flex-wrap:wrap;">
+                            <input type="hidden" id="editUserId">
+                            <span>编辑 <strong id="editUserNameLabel"></strong>：</span>
+                            <input class="input" id="editUserUsername" placeholder="用户名" style="min-width:120px;">
+                            <input class="input" id="editUserEmail" type="email" placeholder="邮箱" style="min-width:180px;">
+                            <select class="select" id="editUserSource">
+                                <option value="WEB">Web 端</option>
+                                <option value="APP">手机端</option>
+                            </select>
+                            <select class="select" id="editUserStatus">
+                                <option value="ENABLED">启用</option>
+                                <option value="DISABLED">禁用</option>
+                            </select>
+                            <label class="muted" style="font-size:12px; display:inline-flex; align-items:center; gap:4px;"><input type="checkbox" id="editUserComment" checked> 允许评论</label>
+                            <label class="muted" style="font-size:12px; display:inline-flex; align-items:center; gap:4px;"><input type="checkbox" id="editUserUpload" checked> 允许上传</label>
+                            <button class="btn btn-primary" onclick="saveEditPlatformUser()">保存</button>
+                            <button class="btn btn-light" onclick="cancelEditUser()">取消</button>
+                        </div>
+                        <p id="userPageInfo" class="msg muted" style="margin:6px 0; font-size:12px;"> </p>
                         <p id="userMsg" class="msg"></p>
                         <table id="userTable"></table>
+                        <div class="toolbar" id="userPager" style="margin-top:8px; display:none;">
+                            <span id="userPagerInfo" class="muted" style="font-size:12px;"></span>
+                            <button class="btn btn-light" type="button" id="userPrevPage" onclick="loadPlatformUsers(userListPage - 1)">上一页</button>
+                            <button class="btn btn-light" type="button" id="userNextPage" onclick="loadPlatformUsers(userListPage + 1)">下一页</button>
+                        </div>
                     </div>
                 </div>
                 <div id="reviewPage" class="page">
                     <div class="panel">
                         <h3>内容审核</h3>
+                        <p class="muted" style="font-size:12px; margin:0 0 6px;">可按状态、类型、来源、提交人、关键词、提交时间、风险分组合筛选。</p>
                         <div class="toolbar">
-                            <select class="select" id="reviewFilterStatus">
+                            <select class="select" id="reviewFilterStatus" title="审核状态">
                                 <option value="">全部状态</option>
-                                <option value="PENDING">PENDING</option>
-                                <option value="APPROVED">APPROVED</option>
-                                <option value="REJECTED">REJECTED</option>
+                                <option value="PENDING">待审核</option>
+                                <option value="APPROVED">已通过</option>
+                                <option value="REJECTED">已拒绝</option>
                             </select>
-                            <button class="btn btn-light" onclick="loadReviewContents()">刷新审核列表</button>
+                            <select class="select" id="reviewFilterType" title="内容类型">
+                                <option value="">全部类型</option>
+                                <option value="COMMENT">评论</option>
+                                <option value="IMAGE">图片</option>
+                                <option value="VIDEO">视频</option>
+                                <option value="AUDIO">音频</option>
+                            </select>
+                            <select class="select" id="reviewFilterSource" title="来源子系统">
+                                <option value="">全部来源</option>
+                                <option value="WEB">WEB</option>
+                                <option value="APP">APP</option>
+                            </select>
+                            <input class="input" id="reviewFilterSubmitter" placeholder="提交人(模糊)" style="min-width:100px;">
+                            <input class="input" id="reviewFilterKeyword" placeholder="内容/链接关键词" style="min-width:140px;">
+                            <input class="input" id="reviewFilterSubmitFrom" type="datetime-local" title="提交时间起">
+                            <input class="input" id="reviewFilterSubmitTo" type="datetime-local" title="提交时间止">
+                            <input class="input" id="reviewFilterRiskMin" type="number" min="0" max="100" placeholder="风险≥" style="width:88px;">
+                            <input class="input" id="reviewFilterRiskMax" type="number" min="0" max="100" placeholder="风险≤" style="width:88px;">
+                            <button class="btn btn-primary" onclick="loadReviewContents()">查询</button>
+                            <button class="btn btn-light" onclick="resetReviewFilters()">重置</button>
                         </div>
                         <div class="inline">
                             <select class="select" id="newReviewType">
-                                <option value="COMMENT">COMMENT</option>
-                                <option value="IMAGE">IMAGE</option>
-                                <option value="VIDEO">VIDEO</option>
-                                <option value="AUDIO">AUDIO</option>
+                                <option value="COMMENT">评论</option>
+                                <option value="IMAGE">图片</option>
+                                <option value="VIDEO">视频</option>
+                                <option value="AUDIO">音频</option>
                             </select>
-                            <input class="input" id="newReviewSourceSystem" placeholder="来源子系统（WEB/APP）">
+                            <select class="select" id="newReviewSourceSystem" title="来源子系统">
+                                <option value="WEB">WEB</option>
+                                <option value="APP">APP</option>
+                            </select>
                             <input class="input" id="newReviewSubmitter" placeholder="提交人">
                             <input class="input" id="newReviewRiskScore" type="number" min="0" max="100" placeholder="风险分0-100">
                             <input class="input" id="newReviewUrl" placeholder="内容URL(可选)">
@@ -192,6 +335,13 @@
                             <button class="btn btn-light" onclick="loadArtifacts()">刷新列表</button>
                             <button class="btn btn-light" onclick="exportArtifacts()">导出CSV</button>
                         </div>
+                        <p class="muted" style="margin:0 0 6px; font-size:12px;">CSV 导入：与导出列一致时自动识别 <code>id</code> 列；也支持 7 列无 id 的简化格式。</p>
+                        <div class="toolbar" style="margin-bottom:8px;">
+                            <label class="file-label">选择 CSV 文件
+                                <input type="file" id="artifactImportFile" accept=".csv" onchange="setMsg('artifactMsg','已选择: ' + (this.files[0] && this.files[0].name), true)">
+                            </label>
+                            <button class="btn btn-primary" onclick="uploadArtifactCsv()">上传导入</button>
+                        </div>
                         <div class="inline">
                             <input class="input" id="artifactId" placeholder="编辑时填ID(新增可空)">
                             <input class="input" id="artifactName" placeholder="文物名称">
@@ -199,12 +349,44 @@
                             <input class="input" id="artifactType" placeholder="类型">
                             <input class="input" id="artifactMaterial" placeholder="材质">
                             <input class="input" id="artifactImageUrl" placeholder="图片URL">
-                            <input class="input" id="artifactSourceSystem" placeholder="来源子系统">
+                            <select class="select" id="artifactSourceSystem" title="来源子系统">
+                                <option value="">请选择来源</option>
+                                <option value="artifact-system">artifact-system</option>
+                                <option value="user-system">user-system</option>
+                                <option value="WEB">WEB</option>
+                                <option value="APP">APP</option>
+                            </select>
                             <input class="input" id="artifactKgStatus" placeholder="图谱同步状态">
                             <button class="btn btn-primary" onclick="saveArtifact()">保存文物</button>
                         </div>
                         <p id="artifactMsg" class="msg"></p>
                         <table id="artifactTable"></table>
+                    </div>
+                </div>
+                <div id="integrationPage" class="page">
+                    <div class="panel">
+                        <h3>子系统 API 代理联调</h3>
+                        <p class="muted" style="margin-top:0;">本模块通过本后台 <strong>统一转发</strong> 到用户子系统/文物子系统，不直接连对方数据库。在 <code>application.yml</code> 中切换
+                            <code>integration.mode: mock | real</code>；<code>real</code> 时请将 baseUrl 改为对方已部署地址。</p>
+                        <div class="toolbar">
+                            <button class="btn btn-light" onclick="loadIntegrationStatus()">刷新状态</button>
+                            <button class="btn btn-light" onclick="proxyUsers()">代理: 拉取用户列表</button>
+                            <button class="btn btn-light" onclick="proxyArtifacts()">代理: 拉取文物列表</button>
+                            <button class="btn btn-primary" onclick="proxyReviewCallback()">代理: 回传审核结果(模板)</button>
+                        </div>
+                        <p class="muted" style="margin:8px 0 0; font-size:12px;">通用转发 POST <code>/api/admin/integrations/proxy/forward</code> 示例在下方；body:
+                            <code>{"system":"user","subPath":"/api/xxx","method":"GET","body":null}</code>
+                        </p>
+                        <div class="inline" style="margin-top:8px;">
+                            <input class="input" id="fwdSubPath" placeholder="subPath 如 /api/health" style="min-width:200px;">
+                            <select class="select" id="fwdSystem" style="width:120px;">
+                                <option value="user">user 子系统</option>
+                                <option value="artifact">artifact 子系统</option>
+                            </select>
+                            <button class="btn btn-primary" onclick="proxyForwardGet()">GET 转发</button>
+                        </div>
+                        <p id="integrationMsg" class="msg"></p>
+                        <pre class="json-out" id="integrationOut">点击上方按钮后在此显示 JSON 响应…</pre>
                     </div>
                 </div>
                 <div id="logPage" class="page">
@@ -227,16 +409,104 @@
 
 <script>
     let jwtToken = localStorage.getItem("jwtToken") || "";
+    let currentAppRole = "";
+    let userListPage = 0;
+    const userListSize = 20;
     const pageTitles = {
         dashboardPage: "系统概览",
         adminPage: "管理员管理",
-        rbacPage: "角色权限管理",
-        userPage: "平台用户管理",
+        rbacPage: "角色与权限",
+        userPage: "平台用户",
         reviewPage: "内容审核",
-        artifactPage: "文物数据管理",
+        artifactPage: "文物数据",
+        integrationPage: "子系统 API 代理",
         logPage: "日志与统计"
     };
 
+    function roleToZh(r) {
+        if (r === "SUPER_ADMIN") return "超级管理员";
+        if (r === "DATA_ADMIN") return "数据管理员";
+        if (r === "CONTENT_REVIEWER") return "内容审核员";
+        return r;
+    }
+    function statusToZh(s) {
+        if (s === "ENABLED") return "启用";
+        if (s === "DISABLED") return "禁用";
+        return s;
+    }
+    function sourceToZh(s) {
+        if (s === "APP") return "手机端";
+        if (s === "WEB") return "Web 端";
+        return s;
+    }
+    function localDateTimeToApi(s) {
+        if (!s) return null;
+        return s.length === 16 ? s + ":00" : s;
+    }
+    function reviewStatusToZh(s) {
+        if (s === "PENDING") return "待审核";
+        if (s === "APPROVED") return "已通过";
+        if (s === "REJECTED") return "已拒绝";
+        return s;
+    }
+    function contentTypeToZh(t) {
+        if (t === "COMMENT") return "评论";
+        if (t === "IMAGE") return "图片";
+        if (t === "VIDEO") return "视频";
+        if (t === "AUDIO") return "音频";
+        return t;
+    }
+    function operationTypeToZh(t) {
+        const m = {
+            CREATE_REVIEW_CONTENT: "新增待审核内容",
+            REVIEW_CONTENT: "单条内容审核",
+            BATCH_REVIEW_CONTENT: "批量内容审核",
+            CREATE_PLATFORM_USER: "创建平台用户",
+            UPDATE_PLATFORM_USER: "更新平台用户",
+            DELETE_PLATFORM_USER: "删除平台用户",
+            UPDATE_PLATFORM_USER_STATUS: "更新平台用户状态",
+            UPDATE_PLATFORM_USER_PERMISSION: "更新平台用户权限",
+            CREATE_ADMIN: "创建管理员",
+            UPDATE_ADMIN_STATUS: "更新管理员状态",
+            UPDATE_ADMIN: "更新管理员",
+            DELETE_ADMIN: "删除管理员"
+        };
+        return m[t] || t;
+    }
+    function buildReviewQuery() {
+        const p = new URLSearchParams();
+        const st = document.getElementById("reviewFilterStatus").value;
+        if (st) p.set("status", st);
+        const ct = document.getElementById("reviewFilterType").value;
+        if (ct) p.set("contentType", ct);
+        const src = document.getElementById("reviewFilterSource").value.trim();
+        if (src) p.set("sourceSystem", src);
+        const sub = document.getElementById("reviewFilterSubmitter").value.trim();
+        if (sub) p.set("submitter", sub);
+        const kw = document.getElementById("reviewFilterKeyword").value.trim();
+        if (kw) p.set("keyword", kw);
+        const sf = localDateTimeToApi(document.getElementById("reviewFilterSubmitFrom").value);
+        const tf = localDateTimeToApi(document.getElementById("reviewFilterSubmitTo").value);
+        if (sf) p.set("submitFrom", sf);
+        if (tf) p.set("submitTo", tf);
+        const rmin = document.getElementById("reviewFilterRiskMin").value.trim();
+        const rmax = document.getElementById("reviewFilterRiskMax").value.trim();
+        if (rmin !== "") p.set("riskMin", rmin);
+        if (rmax !== "") p.set("riskMax", rmax);
+        return p;
+    }
+    function resetReviewFilters() {
+        document.getElementById("reviewFilterStatus").value = "";
+        document.getElementById("reviewFilterType").value = "";
+        document.getElementById("reviewFilterSource").value = "";
+        document.getElementById("reviewFilterSubmitter").value = "";
+        document.getElementById("reviewFilterKeyword").value = "";
+        document.getElementById("reviewFilterSubmitFrom").value = "";
+        document.getElementById("reviewFilterSubmitTo").value = "";
+        document.getElementById("reviewFilterRiskMin").value = "";
+        document.getElementById("reviewFilterRiskMax").value = "";
+        loadReviewContents();
+    }
     function setMsg(id, text, ok = true) {
         const el = document.getElementById(id);
         el.textContent = text;
@@ -249,6 +519,15 @@
         document.querySelectorAll(".menu-btn").forEach(b => b.classList.remove("active"));
         if (btnEl) btnEl.classList.add("active");
         document.getElementById("pageTitle").textContent = pageTitles[pageId] || "后台管理";
+    }
+    function ensureDefaultPageVisible() {
+        const active = document.querySelector(".menu-btn.active");
+        if (active && active.style.display !== "none") return;
+        const firstVisible = Array.from(document.querySelectorAll(".menu-btn"))
+            .find(btn => btn.style.display !== "none");
+        if (!firstVisible) return;
+        const page = firstVisible.getAttribute("data-page");
+        if (page) switchPage(page, firstVisible);
     }
 
     async function api(path, options = {}) {
@@ -284,42 +563,61 @@
             jwtToken = result.data.token;
             localStorage.setItem("jwtToken", jwtToken);
             const me = result.data.adminUser;
-            setMenuByRole(me.role, result.data.permissions || []);
-            document.getElementById("me").textContent = `${me.username} | ${me.role}`;
+            currentAppRole = me.role;
+            setMenuByRole(me.role);
+            document.getElementById("me").textContent = `${me.username} ｜ ${roleToZh(me.role)}`;
             showApp();
-            loadDashboard();
-            loadAdmins();
-            loadRolesAndPermissions();
-            loadPlatformUsers();
-            loadReviewContents();
-            loadArtifacts();
-            loadLogs();
+            loadAfterLogin(me.role);
             setMsg("loginMsg", "登录成功");
         } catch (e) {
             setMsg("loginMsg", e.message, false);
         }
     }
 
-    async function bootstrap() {
-        try {
-            const username = document.getElementById("username").value.trim();
-            const password = document.getElementById("password").value.trim();
-            if (!username || !password) throw new Error("请输入要初始化的账号和密码");
-            const resp = await fetch("/api/admin/auth/bootstrap", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ username, password, role: "SUPER_ADMIN" })
-            });
-            const data = await resp.json();
-            if (!resp.ok || !data.success) throw new Error(data.message || "初始化失败");
-            setMsg("loginMsg", "初始化成功，请点击登录");
-        } catch (e) {
-            setMsg("loginMsg", e.message, false);
-        }
+    function resetQuerySelectionsOnLogin() {
+        userListPage = 0;
+        const setIf = (id, value) => {
+            const el = document.getElementById(id);
+            if (el) el.value = value;
+        };
+        // 管理员管理筛选
+        setIf("adminFilterUsername", "");
+        setIf("adminFilterRole", "");
+        setIf("adminFilterStatus", "");
+        // 平台用户筛选
+        setIf("filterUserName", "");
+        setIf("filterUserSource", "");
+        setIf("filterUserStatus", "");
+        setIf("filterUserCreatedFrom", "");
+        setIf("filterUserCreatedTo", "");
+        // 内容审核筛选
+        setIf("reviewFilterStatus", "");
+        setIf("reviewFilterType", "");
+        setIf("reviewFilterSource", "");
+        setIf("reviewFilterSubmitter", "");
+        setIf("reviewFilterKeyword", "");
+        setIf("reviewFilterSubmitFrom", "");
+        setIf("reviewFilterSubmitTo", "");
+        setIf("reviewFilterRiskMin", "");
+        setIf("reviewFilterRiskMax", "");
+    }
+
+    function loadAfterLogin(role) {
+        resetQuerySelectionsOnLogin();
+        const ubar = document.getElementById("userCreateBar");
+        if (role === "SUPER_ADMIN") { if (ubar) ubar.style.display = "flex"; }
+        else { if (ubar) ubar.style.display = "none"; }
+        if (role === "SUPER_ADMIN" || role === "CONTENT_REVIEWER") { loadDashboard(); }
+        if (role === "SUPER_ADMIN") { loadAdmins(); loadRolesAndPermissions(); }
+        if (role === "SUPER_ADMIN") { loadPlatformUsers(); loadArtifacts(); loadIntegrationStatus(); }
+        if (role === "DATA_ADMIN") { loadArtifacts(); }
+        if (role === "SUPER_ADMIN" || role === "CONTENT_REVIEWER") { loadReviewContents(); }
+        if (role === "SUPER_ADMIN") { loadLogs(); }
     }
 
     function logout() {
         jwtToken = "";
+        currentAppRole = "";
         localStorage.removeItem("jwtToken");
         showLogin();
     }
@@ -328,30 +626,101 @@
         if (!jwtToken) return;
         try {
             const me = await api("/api/admin/auth/me");
-            setMenuByRole(me.role, []);
-            document.getElementById("me").textContent = `${me.username} | ${me.role}`;
+            currentAppRole = me.role;
+            setMenuByRole(me.role);
+            document.getElementById("me").textContent = `${me.username} ｜ ${roleToZh(me.role)}`;
             showApp();
-            loadDashboard();
-            loadAdmins();
-            loadRolesAndPermissions();
-            loadPlatformUsers();
-            loadReviewContents();
-            loadArtifacts();
-            loadLogs();
+            loadAfterLogin(me.role);
         } catch (e) {
             jwtToken = "";
+            currentAppRole = "";
             localStorage.removeItem("jwtToken");
             showLogin();
         }
     }
 
+    function buildAdminQuery() {
+        const p = new URLSearchParams();
+        const username = document.getElementById("adminFilterUsername").value.trim();
+        const role = document.getElementById("adminFilterRole").value;
+        const status = document.getElementById("adminFilterStatus").value;
+        if (username) p.set("username", username);
+        if (role) p.set("role", role);
+        if (status) p.set("status", status);
+        return p;
+    }
+    function resetAdminFilters() {
+        document.getElementById("adminFilterUsername").value = "";
+        document.getElementById("adminFilterRole").value = "";
+        document.getElementById("adminFilterStatus").value = "";
+        loadAdmins();
+    }
     async function loadAdmins() {
         try {
-            const data = await api("/api/admin/users");
+            const p = buildAdminQuery();
+            const data = await api(p.toString() ? ("/api/admin/users?" + p.toString()) : "/api/admin/users");
             document.getElementById("adminTable").innerHTML =
-                "<tr><th>ID</th><th>用户名</th><th>角色</th><th>状态</th><th>创建时间</th></tr>" +
-                data.map(x => `<tr><td>${x.id}</td><td>${x.username}</td><td><span class="badge">${x.role}</span></td><td>${x.status}</td><td>${x.createdAt || ""}</td></tr>`).join("");
+                "<tr><th>ID</th><th>用户名</th><th>角色</th><th>状态</th><th>创建时间</th><th>操作</th></tr>" +
+                data.map(x => {
+                    const prot = x.username === "admin";
+                    const del = prot ? "" : ` <button class="btn btn-danger" onclick="deleteAdminUser(${x.id},'${x.username.replace(/'/g, "")}')">删除</button>`;
+                    const ed = ` <button class="btn btn-light" onclick="openEditAdmin(${x.id},'${x.username.replace(/'/g, "")}','${x.role}','${x.status}')">修改</button>`;
+                    return `<tr><td>${x.id}</td><td>${x.username}${prot ? "（受保护）" : ""}</td><td><span class="badge">${roleToZh(x.role)}</span></td><td>${statusToZh(x.status)}</td><td>${x.createdAt || ""}</td><td>${ed}${del}</td></tr>`;
+                }).join("");
             setMsg("adminMsg", "加载成功");
+        } catch (e) { setMsg("adminMsg", e.message, false); }
+    }
+
+    function openEditAdmin(id, username, role, status) {
+        document.getElementById("editAdminId").value = id;
+        document.getElementById("editAdminUsername").value = username;
+        document.getElementById("editAdminNameLabel").textContent = username;
+        document.getElementById("editAdminRole").value = role;
+        document.getElementById("editAdminStatus").value = status || "ENABLED";
+        document.getElementById("editAdminPassword").value = "";
+        const roleSel = document.getElementById("editAdminRole");
+        const statusSel = document.getElementById("editAdminStatus");
+        const panel = document.getElementById("adminEditPanel");
+        panel.style.display = "inline-flex";
+        if (username === "admin") {
+            roleSel.value = "SUPER_ADMIN";
+            statusSel.value = "ENABLED";
+            roleSel.disabled = true;
+            statusSel.disabled = true;
+        } else {
+            roleSel.disabled = false;
+            statusSel.disabled = false;
+        }
+    }
+    function cancelEditAdmin() {
+        document.getElementById("adminEditPanel").style.display = "none";
+        document.getElementById("editAdminRole").disabled = false;
+        document.getElementById("editAdminStatus").disabled = false;
+    }
+    async function saveEditAdmin() {
+        const id = document.getElementById("editAdminId").value;
+        const role = document.getElementById("editAdminRole").value;
+        const status = document.getElementById("editAdminStatus").value;
+        const pwd = document.getElementById("editAdminPassword").value.trim();
+        const payload = {};
+        if (!document.getElementById("editAdminRole").disabled) { payload.role = role; }
+        if (!document.getElementById("editAdminStatus").disabled) { payload.status = status; }
+        if (pwd) { payload.newPassword = pwd; }
+        if (Object.keys(payload).length === 0) { setMsg("adminMsg", "请调整状态、角色或填写新密码", false); return; }
+        try {
+            await api(`/api/admin/users/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+            setMsg("adminMsg", "已更新", true);
+            cancelEditAdmin();
+            await loadAdmins();
+        } catch (e) { setMsg("adminMsg", e.message, false); }
+    }
+    async function deleteAdminUser(id, username) {
+        if (username === "admin") { setMsg("adminMsg", "受保护账号不能删除", false); return; }
+        if (!confirm("确定删除该管理员 " + username + "？")) return;
+        try {
+            await api(`/api/admin/users/${id}`, { method: "DELETE" });
+            setMsg("adminMsg", "已删除", true);
+            await loadAdmins();
         } catch (e) { setMsg("adminMsg", e.message, false); }
     }
 
@@ -368,13 +737,132 @@
         } catch (e) { setMsg("adminMsg", e.message, false); }
     }
 
-    async function loadPlatformUsers() {
+    function buildPlatformUserQuery() {
+        const p = new URLSearchParams();
+        p.set("page", String(userListPage));
+        p.set("size", String(userListSize));
+        const un = document.getElementById("filterUserName").value.trim();
+        if (un) p.set("username", un);
+        const src = document.getElementById("filterUserSource").value;
+        if (src) p.set("source", src);
+        const st = document.getElementById("filterUserStatus").value;
+        if (st) p.set("status", st);
+        const f = localDateTimeToApi(document.getElementById("filterUserCreatedFrom").value);
+        const t = localDateTimeToApi(document.getElementById("filterUserCreatedTo").value);
+        if (f) p.set("createdFrom", f);
+        if (t) p.set("createdTo", t);
+        return p;
+    }
+    function resetUserFilters() {
+        document.getElementById("filterUserName").value = "";
+        document.getElementById("filterUserSource").value = "";
+        document.getElementById("filterUserStatus").value = "";
+        document.getElementById("filterUserCreatedFrom").value = "";
+        document.getElementById("filterUserCreatedTo").value = "";
+        userListPage = 0;
+        loadPlatformUsers(0);
+    }
+    function selectedUserIds() {
+        return Array.from(document.querySelectorAll(".user-pick:checked")).map(el => Number(el.getAttribute("data-id")));
+    }
+    function toggleAllUsers(checked) {
+        document.querySelectorAll(".user-pick").forEach(el => { el.checked = checked; });
+    }
+    async function loadPlatformUsers(page) {
+        if (typeof page === "number" && !Number.isNaN(page)) { userListPage = Math.max(0, page); }
         try {
-            const data = await api("/api/admin/platform-users");
+            const p = buildPlatformUserQuery();
+            const data = await api("/api/admin/platform-users?" + p.toString());
+            const list = data.content || [];
+            if (list.length === 0 && (data.totalElements || 0) > 0 && userListPage > 0) {
+                userListPage = Math.max(0, userListPage - 1);
+                return loadPlatformUsers();
+            }
+            const total = data.totalElements != null ? data.totalElements : list.length;
+            const totalPages = data.totalPages != null ? data.totalPages : 1;
+            if (data.number != null) { userListPage = data.number; }
+            const pi = document.getElementById("userPageInfo");
+            if (pi) pi.textContent = `共 ${total} 条，第 ${userListPage + 1} / ${Math.max(1, totalPages)} 页`;
+            const pg = document.getElementById("userPager");
+            if (pg) {
+                pg.style.display = "flex";
+                const pinfo = document.getElementById("userPagerInfo");
+                if (pinfo) pinfo.textContent = "";
+                const prev = document.getElementById("userPrevPage");
+                const next = document.getElementById("userNextPage");
+                if (prev) prev.disabled = userListPage <= 0;
+                if (next) next.disabled = userListPage >= totalPages - 1;
+            }
             document.getElementById("userTable").innerHTML =
-                "<tr><th>ID</th><th>用户名</th><th>邮箱</th><th>来源</th><th>状态</th><th>评论权限</th><th>上传权限</th></tr>" +
-                data.map(x => `<tr><td>${x.id}</td><td>${x.username}</td><td>${x.email}</td><td>${x.source}</td><td>${x.status}</td><td>${x.commentAllowed}</td><td>${x.uploadAllowed}</td></tr>`).join("");
-            setMsg("userMsg", "加载成功");
+                "<tr><th><input type=\"checkbox\" onchange=\"toggleAllUsers(this.checked)\" title=\"全选\"></th><th>ID</th><th>用户名</th><th>邮箱</th><th>来源</th><th>状态</th><th>注册时间</th><th>评论</th><th>上传</th><th>操作</th></tr>" +
+                list.map(x => {
+                    return `<tr><td><input type="checkbox" class="user-pick" data-id="${x.id}"></td><td>${x.id}</td><td>${x.username}</td><td>${x.email}</td><td>${sourceToZh(x.source)}</td><td>${statusToZh(x.status)}</td><td>${x.createdAt || ""}</td><td>${x.commentAllowed ? "允许" : "禁止"}</td><td>${x.uploadAllowed ? "允许" : "禁止"}</td><td><button class="btn btn-light" onclick="openEditUser(${x.id})">编辑</button> <button class="btn btn-danger" onclick="deletePlatformUser(${x.id}, '${String(x.username).replace(/'/g, "")}')">删除</button></td></tr>`;
+                }).join("");
+            setMsg("userMsg", "加载成功", true);
+        } catch (e) { setMsg("userMsg", e.message, false); }
+    }
+    async function openEditUser(id) {
+        let u;
+        try { u = await api("/api/admin/platform-users/" + id); } catch (e) { setMsg("userMsg", e.message, false); return; }
+        document.getElementById("editUserId").value = u.id;
+        document.getElementById("editUserNameLabel").textContent = u.username;
+        document.getElementById("editUserUsername").value = u.username;
+        document.getElementById("editUserEmail").value = u.email;
+        document.getElementById("editUserSource").value = u.source;
+        document.getElementById("editUserStatus").value = u.status;
+        document.getElementById("editUserComment").checked = !!u.commentAllowed;
+        document.getElementById("editUserUpload").checked = !!u.uploadAllowed;
+        document.getElementById("userEditPanel").style.display = "inline-flex";
+    }
+    function cancelEditUser() {
+        document.getElementById("userEditPanel").style.display = "none";
+    }
+    async function saveEditPlatformUser() {
+        const id = document.getElementById("editUserId").value;
+        const payload = {
+            username: document.getElementById("editUserUsername").value.trim(),
+            email: document.getElementById("editUserEmail").value.trim(),
+            source: document.getElementById("editUserSource").value,
+            status: document.getElementById("editUserStatus").value,
+            commentAllowed: document.getElementById("editUserComment").checked,
+            uploadAllowed: document.getElementById("editUserUpload").checked
+        };
+        try {
+            await api("/api/admin/platform-users/" + id, { method: "PUT", body: JSON.stringify(payload) });
+            setMsg("userMsg", "已保存", true);
+            cancelEditUser();
+            await loadPlatformUsers();
+        } catch (e) { setMsg("userMsg", e.message, false); }
+    }
+    async function deletePlatformUser(id, username) {
+        if (!confirm("确定删除平台用户 " + username + " ？其关联行为记录将一并删除。")) return;
+        try {
+            await api("/api/admin/platform-users/" + id, { method: "DELETE" });
+            setMsg("userMsg", "已删除", true);
+            await loadPlatformUsers();
+        } catch (e) { setMsg("userMsg", e.message, false); }
+    }
+    async function userBatchStatus(st) {
+        const ids = selectedUserIds();
+        if (!ids.length) { setMsg("userMsg", "请先勾选用户", false); return; }
+        if (!confirm("确定将选中 " + ids.length + " 个用户置为" + (st === "ENABLED" ? "启用" : "禁用") + "？")) return;
+        const sp = new URLSearchParams();
+        ids.forEach(x => sp.append("ids", String(x)));
+        sp.set("status", st);
+        try {
+            await api("/api/admin/platform-users/batch/status?" + sp.toString(), { method: "PATCH" });
+            setMsg("userMsg", "批量状态已更新", true);
+            await loadPlatformUsers();
+        } catch (e) { setMsg("userMsg", e.message, false); }
+    }
+    async function userBatchDelete() {
+        const ids = selectedUserIds();
+        if (!ids.length) { setMsg("userMsg", "请先勾选用户", false); return; }
+        if (!confirm("确定删除选中的 " + ids.length + " 个用户？此操作不可恢复。")) return;
+        try {
+            await api("/api/admin/platform-users/batch", { method: "DELETE", body: JSON.stringify({ ids }) });
+            setMsg("userMsg", "已批量删除", true);
+            await loadPlatformUsers();
         } catch (e) { setMsg("userMsg", e.message, false); }
     }
 
@@ -396,7 +884,7 @@
             const data = await api("/api/admin/logs");
             document.getElementById("logTable").innerHTML =
                 "<tr><th>ID</th><th>操作人</th><th>类型</th><th>对象</th><th>详情</th><th>时间</th></tr>" +
-                data.map(x => `<tr><td>${x.id}</td><td>${x.operator}</td><td>${x.operationType}</td><td>${x.operationTarget}</td><td>${x.details || ""}</td><td>${x.operationTime || ""}</td></tr>`).join("");
+                data.map(x => `<tr><td>${x.id}</td><td>${x.operator}</td><td><span class="badge">${operationTypeToZh(x.operationType)}</span></td><td>${x.operationTarget}</td><td>${x.details || ""}</td><td>${x.operationTime || ""}</td></tr>`).join("");
         } catch (e) { alert("日志加载失败: " + e.message); }
     }
 
@@ -418,17 +906,51 @@
         } catch (e) { alert("数据修改日志加载失败: " + e.message); }
     }
 
+    function goToPendingReviews() {
+        document.getElementById("reviewFilterStatus").value = "PENDING";
+        document.getElementById("reviewFilterType").value = "";
+        document.getElementById("reviewFilterSource").value = "";
+        document.getElementById("reviewFilterSubmitter").value = "";
+        document.getElementById("reviewFilterKeyword").value = "";
+        document.getElementById("reviewFilterSubmitFrom").value = "";
+        document.getElementById("reviewFilterSubmitTo").value = "";
+        document.getElementById("reviewFilterRiskMin").value = "";
+        document.getElementById("reviewFilterRiskMax").value = "";
+        const btn = document.querySelector('.menu-btn[data-page="reviewPage"]');
+        switchPage("reviewPage", btn);
+        loadReviewContents();
+    }
+
     async function loadDashboard() {
         try {
             const data = await api("/api/admin/dashboard/overview");
             const trend = (data.loginTrend7d || []).map(x => `${x.date}:${x.count}`).join(" | ");
-            document.getElementById("dashboardCards").innerHTML = `
+            const pending = data.pendingReviews != null ? data.pendingReviews : 0;
+            const fullBadges = `
                 <span class="badge">总用户数: ${data.totalUsers}</span>
                 <span class="badge">今日新增用户: ${data.todayNewUsers}</span>
-                <span class="badge">待审核: ${data.pendingReviews}</span>
+                <span class="badge">待审核: ${pending}</span>
                 <span class="badge">文物总数: ${data.totalArtifacts}</span>
                 <span class="badge">近7天登录趋势: ${trend}</span>
             `;
+            const overviewEl = document.getElementById("dashboardOverviewStats");
+            if (overviewEl) {
+                if (currentAppRole === "CONTENT_REVIEWER") {
+                    overviewEl.innerHTML = `
+                        <button type="button" class="dashboard-pending-card" onclick="goToPendingReviews()">
+                            <div class="num">${pending}</div>
+                            <div style="font-size:15px;font-weight:700;margin-top:4px;">待审核</div>
+                            <p class="muted" style="margin:8px 0 0;font-size:12px;">点击进入内容审核，并自动筛选为「待审核」队列。</p>
+                        </button>
+                    `;
+                } else {
+                    overviewEl.innerHTML = fullBadges;
+                }
+            }
+            const logCards = document.getElementById("dashboardCards");
+            if (logCards) {
+                logCards.innerHTML = fullBadges;
+            }
         } catch (e) { console.log(e); }
     }
 
@@ -531,35 +1053,116 @@
         } catch (e) { setMsg("artifactMsg", e.message, false); }
     }
 
-    function exportArtifacts() {
-        window.open("/api/admin/artifacts/export", "_blank");
+    async function exportArtifacts() {
+        try {
+            const resp = await fetch("/api/admin/artifacts/export", { headers: { "Authorization": "Bearer " + jwtToken } });
+            if (!resp.ok) throw new Error("导出失败");
+            const blob = await resp.blob();
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = "artifacts.csv";
+            a.click();
+            URL.revokeObjectURL(a.href);
+            setMsg("artifactMsg", "已开始下载", true);
+        } catch (e) {
+            setMsg("artifactMsg", e.message, false);
+        }
     }
 
-    function setMenuByRole(role, permissions) {
-        const hidden = new Set();
-        if (role === "CONTENT_REVIEWER") {
-            hidden.add("adminPage");
-            hidden.add("artifactPage");
-            hidden.add("rbacPage");
+    async function uploadArtifactCsv() {
+        const el = document.getElementById("artifactImportFile");
+        const file = el.files[0];
+        if (!file) { setMsg("artifactMsg", "请先选择 .csv 文件", false); return; }
+        const form = new FormData();
+        form.append("file", file);
+        try {
+            const resp = await fetch("/api/admin/artifacts/import", { method: "POST", body: form, headers: { "Authorization": "Bearer " + jwtToken } });
+            const result = await resp.json();
+            if (!resp.ok || !result.success) throw new Error(result.message || "导入失败");
+            setMsg("artifactMsg", "已导入 " + result.data + " 条", true);
+            el.value = "";
+            await loadArtifacts();
+        } catch (e) {
+            setMsg("artifactMsg", e.message, false);
         }
-        if (role === "DATA_ADMIN") {
-            hidden.add("rbacPage");
+    }
+
+    function setIntegrationOut(obj) {
+        const el = document.getElementById("integrationOut");
+        el.textContent = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
+    }
+
+    async function loadIntegrationStatus() {
+        try {
+            const s = await api("/api/admin/integrations/status");
+            setIntegrationOut(s);
+            setMsg("integrationMsg", "状态已加载（见下方 JSON）", true);
+        } catch (e) {
+            setMsg("integrationMsg", e.message, false);
         }
+    }
+
+    async function proxyUsers() {
+        try {
+            const data = await api("/api/admin/integrations/proxy/users");
+            setIntegrationOut(data);
+            setMsg("integrationMsg", "用户代理成功", true);
+        } catch (e) { setMsg("integrationMsg", e.message, false); }
+    }
+
+    async function proxyArtifacts() {
+        try {
+            const data = await api("/api/admin/integrations/proxy/artifacts");
+            setIntegrationOut(data);
+            setMsg("integrationMsg", "文物代理成功", true);
+        } catch (e) { setMsg("integrationMsg", e.message, false); }
+    }
+
+    async function proxyReviewCallback() {
+        try {
+            const payload = { reviewId: 1, result: "APPROVED", detail: "模板回调", sourceSystem: "admin-backend" };
+            const data = await api("/api/admin/integrations/proxy/review", { method: "POST", body: JSON.stringify(payload) });
+            setIntegrationOut(data);
+            setMsg("integrationMsg", "审核回传已代理", true);
+        } catch (e) { setMsg("integrationMsg", e.message, false); }
+    }
+
+    async function proxyForwardGet() {
+        const sub = document.getElementById("fwdSubPath").value.trim();
+        if (!sub || !sub.startsWith("/")) { setMsg("integrationMsg", "subPath 需以 / 开头", false); return; }
+        const system = document.getElementById("fwdSystem").value;
+        const body = { system, subPath: sub, method: "GET" };
+        try {
+            const data = await api("/api/admin/integrations/proxy/forward", { method: "POST", body: JSON.stringify(body) });
+            setIntegrationOut(data);
+            setMsg("integrationMsg", "GET 转发完成", true);
+        } catch (e) { setMsg("integrationMsg", e.message, false); }
+    }
+
+    function setMenuByRole(role) {
+        const pages = {
+            SUPER_ADMIN: ["dashboardPage", "adminPage", "rbacPage", "userPage", "reviewPage", "artifactPage", "integrationPage", "logPage"],
+            DATA_ADMIN: ["artifactPage"],
+            CONTENT_REVIEWER: ["dashboardPage", "reviewPage"]
+        };
+        const allow = new Set(pages[role] || ["dashboardPage", "logPage"]);
         document.querySelectorAll(".menu-btn").forEach(btn => {
-            const page = btn.getAttribute("data-page");
-            btn.style.display = hidden.has(page) ? "none" : "block";
+            const p = btn.getAttribute("data-page");
+            if (!p) { btn.style.display = "block"; return; }
+            btn.style.display = allow.has(p) ? "block" : "none";
         });
+        ensureDefaultPageVisible();
     }
 
     async function loadReviewContents() {
         try {
-            const status = document.getElementById("reviewFilterStatus").value;
-            const path = status ? `/api/admin/reviews?status=${encodeURIComponent(status)}` : "/api/admin/reviews";
+            const p = buildReviewQuery();
+            const path = p.toString() ? `/api/admin/reviews?${p}` : "/api/admin/reviews";
             const data = await api(path);
             document.getElementById("reviewTable").innerHTML =
-                "<tr><th>ID</th><th>类型</th><th>来源</th><th>提交人</th><th>文本</th><th>风险分</th><th>状态</th><th>拒绝原因</th><th>审核人</th><th>操作</th></tr>" +
-                data.map(x => `<tr><td>${x.id}</td><td>${x.contentType}</td><td>${x.sourceSystem}</td><td>${x.submitter}</td><td>${x.contentText}</td><td>${x.riskScore}</td><td>${x.reviewStatus}</td><td>${x.rejectReason || ""}</td><td>${x.reviewer || ""}</td><td>${x.reviewStatus === "PENDING" ? `<button class="btn btn-success" onclick="reviewAction(${x.id}, 'APPROVED')">通过</button> <button class="btn btn-danger" onclick="reviewAction(${x.id}, 'REJECTED')">拒绝</button>` : ""}</td></tr>`).join("");
-            setMsg("reviewMsg", "审核列表加载成功");
+                "<tr><th>ID</th><th>类型</th><th>来源</th><th>提交人</th><th>文本</th><th>风险分</th><th>状态</th><th>提交时间</th><th>拒绝原因</th><th>审核人</th><th>操作</th></tr>" +
+                data.map(x => `<tr><td>${x.id}</td><td><span class="badge">${contentTypeToZh(x.contentType)}</span></td><td>${x.sourceSystem}</td><td>${x.submitter}</td><td>${x.contentText}</td><td>${x.riskScore}</td><td><span class="badge">${reviewStatusToZh(x.reviewStatus)}</span></td><td>${x.submitTime || ""}</td><td>${x.rejectReason || ""}</td><td>${x.reviewer || ""}</td><td>${x.reviewStatus === "PENDING" ? `<button class="btn btn-success" onclick="reviewAction(${x.id}, 'APPROVED')">通过</button> <button class="btn btn-danger" onclick="reviewAction(${x.id}, 'REJECTED')">拒绝</button>` : ""}</td></tr>`).join("");
+            setMsg("reviewMsg", "加载成功", true);
         } catch (e) { setMsg("reviewMsg", e.message, false); }
     }
 
@@ -579,15 +1182,47 @@
         } catch (e) { setMsg("reviewMsg", e.message, false); }
     }
 
-    async function reviewAction(id, status) {
+    let rejectModalReviewId = null;
+    function openRejectModal(reviewId) {
+        rejectModalReviewId = reviewId;
+        const m = document.getElementById("rejectModal");
+        const ta = document.getElementById("rejectModalReason");
+        ta.value = "";
+        m.classList.add("open");
+        m.setAttribute("aria-hidden", "false");
+        setTimeout(() => ta.focus(), 0);
+    }
+    function closeRejectModal() {
+        const m = document.getElementById("rejectModal");
+        m.classList.remove("open");
+        m.setAttribute("aria-hidden", "true");
+        rejectModalReviewId = null;
+    }
+    async function submitRejectModal() {
+        const id = rejectModalReviewId;
+        if (id == null) return;
+        const rejectReason = document.getElementById("rejectModalReason").value.trim();
+        if (!rejectReason) { setMsg("reviewMsg", "请填写拒绝原因", false); return; }
         try {
-            let rejectReason = null;
-            if (status === "REJECTED") {
-                rejectReason = prompt("请输入拒绝原因:");
-                if (!rejectReason || !rejectReason.trim()) throw new Error("拒绝原因不能为空");
-            }
-            await api(`/api/admin/reviews/${id}/action`, { method: "PATCH", body: JSON.stringify({ reviewStatus: status, rejectReason }) });
-            setMsg("reviewMsg", "审核操作成功");
+            await api(`/api/admin/reviews/${id}/action`, { method: "PATCH", body: JSON.stringify({ reviewStatus: "REJECTED", rejectReason }) });
+            closeRejectModal();
+            setMsg("reviewMsg", "审核操作成功", true);
+            await loadReviewContents();
+        } catch (e) { setMsg("reviewMsg", e.message, false); }
+    }
+    document.getElementById("rejectModal").addEventListener("click", (e) => { if (e.target.id === "rejectModal") { closeRejectModal(); } });
+    document.addEventListener("keydown", (e) => {
+        const m = document.getElementById("rejectModal");
+        if (e.key === "Escape" && m.classList.contains("open")) { closeRejectModal(); }
+    });
+    async function reviewAction(id, status) {
+        if (status === "REJECTED") {
+            openRejectModal(id);
+            return;
+        }
+        try {
+            await api(`/api/admin/reviews/${id}/action`, { method: "PATCH", body: JSON.stringify({ reviewStatus: status, rejectReason: null }) });
+            setMsg("reviewMsg", "审核操作成功", true);
             await loadReviewContents();
         } catch (e) { setMsg("reviewMsg", e.message, false); }
     }

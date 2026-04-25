@@ -35,21 +35,8 @@ CREATE DATABASE overseas_artifacts DEFAULT CHARACTER SET utf8mb4;
 mvn spring-boot:run
 ```
 
-## 6. 初始化超级管理员
-首次启动后，调用：
-
-```http
-POST /api/admin/auth/bootstrap
-Content-Type: application/json
-
-{
-  "username": "admin",
-  "password": "123456",
-  "role": "SUPER_ADMIN"
-}
-```
-
-说明：系统只允许初始化一次，后续不能再调用。
+## 6. 默认超级管理员
+启动时若不存在用户名为 `admin` 的账号，会自动创建：**用户名 `admin` / 密码 `123456`**，角色为超级管理员。该账号**不可删除、不可降级、不可禁用**（可在「管理员管理」中修改其密码）。
 
 ## 7. 登录与访问受保护接口
 先调用登录接口获取 JWT：
@@ -73,6 +60,8 @@ Authorization: Bearer <token>
 ## 8. 主要接口
 - `GET /api/admin/users`：管理员列表（SUPER_ADMIN）
 - `POST /api/admin/users`：创建管理员（SUPER_ADMIN）
+- `PATCH /api/admin/users/{id}`：修改管理员角色、状态、新密码（SUPER_ADMIN，至少一项）
+- `DELETE /api/admin/users/{id}`：删除管理员（不可删 `admin`、不可删自己）
 - `PATCH /api/admin/users/{id}/status?status=ENABLED|DISABLED`：修改管理员状态
 - `GET /api/admin/platform-users`：前台用户列表
 - `POST /api/admin/platform-users`：创建前台用户
@@ -95,9 +84,14 @@ Authorization: Bearer <token>
 - `POST /api/admin/artifacts`：新增文物
 - `PUT /api/admin/artifacts/{id}`：编辑文物
 - `GET /api/admin/artifacts/export`：导出文物 CSV
-- `POST /api/admin/artifacts/import`：导入文物 CSV
+- `POST /api/admin/artifacts/import`：导入文物 CSV（`multipart/form-data`，字段名 `file`）
 - `GET /api/admin/dashboard/overview`：统计看板
-- `GET /api/admin/integrations/endpoints`：子系统 API 对接点
+- `GET /api/admin/integrations/endpoints`：子系统 API 说明与当前配置
+- `GET /api/admin/integrations/status`：当前集成模式与路径
+- `GET /api/admin/integrations/proxy/users`：代理拉取用户子系统用户列表
+- `GET /api/admin/integrations/proxy/artifacts`：代理拉取文物子系统数据
+- `POST /api/admin/integrations/proxy/review`：代理向用户子系统回传审核结果（JSON body）
+- `POST /api/admin/integrations/proxy/forward`：通用代理（`system`: user|artifact，`subPath`，`method`：GET|POST）
 
 ## 9. 简易前端页面
 - 启动后访问：`http://localhost:8080/`
@@ -106,5 +100,19 @@ Authorization: Bearer <token>
   - 角色权限管理页面
   - 用户管理页面（含行为记录）
   - 内容审核页面（含批量）
-  - 文物管理页面（含导出）
+  - 文物管理页面（CSV 文件上传导入、带 token 下载导出）
+  - 子系统 API 代理联调页（`integration.mode` 切换 mock/真实地址）
   - 日志与统计页面
+
+在 `application.yml` 中配置子系统联调：
+
+```yaml
+integration:
+  mode: mock   # 或 real
+  user-system-base-url: http://localhost:9001
+  artifact-system-base-url: http://localhost:9002
+  paths:
+    users: /api/v1/users
+    artifacts: /api/v1/artifacts
+    review-callback: /api/v1/content/review-result
+```

@@ -51,4 +51,10 @@ public class ReviewContent {
 
     @Column(length = 500)
     private String rejectReason;
+
+    @Column(nullable = false)
+    private Boolean autoReviewed = false;
+
+    @Column(length = 500)
+    private String autoDecisionNote;
 }

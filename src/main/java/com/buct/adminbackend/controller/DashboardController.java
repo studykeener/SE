@@ -5,6 +5,7 @@ import com.buct.adminbackend.entity.LoginLog;
 import com.buct.adminbackend.repository.ArtifactRepository;
 import com.buct.adminbackend.repository.LoginLogRepository;
 import com.buct.adminbackend.repository.PlatformUserRepository;
+import com.buct.adminbackend.enums.ReviewStatus;
 import com.buct.adminbackend.repository.ReviewContentRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -30,7 +31,7 @@ public class DashboardController {
     public ApiResponse<Map<String, Object>> overview() {
         Map<String, Object> data = new HashMap<>();
         long totalUsers = platformUserRepository.count();
-        long pendingReviews = reviewContentRepository.findByReviewStatusOrderBySubmitTimeDesc(com.buct.adminbackend.enums.ReviewStatus.PENDING).size();
+        long pendingReviews = reviewContentRepository.countByReviewStatus(ReviewStatus.PENDING);
         long totalArtifacts = artifactRepository.count();
 
         long todayNewUsers = platformUserRepository.findAll().stream()
