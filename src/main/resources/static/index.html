@@ -240,29 +240,9 @@
                 <div id="rbacPage" class="page">
                     <div class="panel">
                         <h3>角色与权限管理</h3>
-                        <div class="toolbar">
-                            <button class="btn btn-light" onclick="loadRolesAndPermissions()">刷新角色/权限</button>
-                            <button class="btn btn-light" onclick="loadAdminsForAssign()">刷新管理员</button>
-                        </div>
-                        <div class="inline">
-                            <input class="input" id="newRoleCode" placeholder="角色代码(如 CUSTOM_ROLE)">
-                            <input class="input" id="newRoleName" placeholder="角色名称">
-                            <input class="input" id="newRoleDesc" placeholder="描述">
-                            <button class="btn btn-primary" onclick="createRole()">新增角色</button>
-                        </div>
-                        <div class="inline" style="margin-top:8px;">
-                            <input class="input" id="assignAdminId" placeholder="管理员ID">
-                            <input class="input" id="assignRoleIds" placeholder="角色ID列表,逗号分隔">
-                            <button class="btn btn-primary" onclick="assignRolesToAdmin()">给管理员分配角色</button>
-                        </div>
-                        <div class="inline" style="margin-top:8px;">
-                            <input class="input" id="assignPermRoleId" placeholder="角色ID">
-                            <input class="input" id="assignPermIds" placeholder="权限ID列表,逗号分隔">
-                            <button class="btn btn-primary" onclick="assignPermissionsToRole()">给角色分配权限</button>
-                        </div>
-                        <p id="rbacMsg" class="msg"></p>
-                        <table id="roleTable"></table>
-                        <table id="permissionTable" style="margin-top:10px;"></table>
+                        <p id="rbacMsg" class="msg" style="display:none;"></p>
+                        <table id="roleTable" style="display:none;"></table>
+                        <table id="permissionTable" style="display:none;"></table>
                     </div>
                 </div>
                 <div id="userPage" class="page">
