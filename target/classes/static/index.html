@@ -22,6 +22,10 @@
         .msg { margin-top:8px; font-size:14px; }
         .ok { color:var(--success); }
         .err { color:var(--danger); }
+        .rev-stats-filter-btn { height:32px; border-radius:8px; padding:0 12px; cursor:pointer; font-size:13px; border:1px solid var(--line); background:#f1f5f9; color:#475569; }
+        .rev-stats-filter-btn.on { background:#dbeafe; color:#1d4ed8; border-color:#60a5fa; font-weight:600; }
+        .rev-stats-sort-btn { height:32px; border-radius:8px; padding:0 12px; cursor:pointer; font-size:13px; border:1px solid #6ee7b7; background:#d1fae5; color:#047857; }
+        .rev-stats-sort-btn:hover { filter:brightness(0.97); }
         #app { display:none; height:100vh; }
         .layout { display:flex; height:100vh; }
         .sidebar { width:230px; background:#111827; color:#e5e7eb; padding:18px 12px; }
@@ -87,12 +91,24 @@
 
 <div id="rejectModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true">
     <div class="modal-box" onclick="event.stopPropagation()">
-        <h3 class="modal-title">填写拒绝原因</h3>
-        <p class="muted" style="font-size:12px; margin:0 0 10px;">将记录在审核单中，不填写无法提交拒绝。</p>
+        <h3 class="modal-title" id="rejectModalTitle">填写拒绝原因</h3>
+        <p class="muted" id="rejectModalHelp" style="font-size:12px; margin:0 0 10px;">将记录在审核单中，不填写无法提交拒绝。</p>
         <textarea id="rejectModalReason" class="modal-textarea" rows="4" placeholder="请说明理由…" maxlength="2000"></textarea>
         <div class="btn-row" style="margin-top:12px; justify-content:flex-end;">
             <button type="button" class="btn btn-light" onclick="closeRejectModal()">取消</button>
             <button type="button" class="btn btn-danger" onclick="submitRejectModal()">确定拒绝</button>
+        </div>
+    </div>
+</div>
+
+<div id="recheckModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal-box" onclick="event.stopPropagation()">
+        <h3 class="modal-title" id="recheckModalTitle">填写复审备注</h3>
+        <p class="muted" style="font-size:12px; margin:0 0 10px;">可选填写，将记录在审核单中。</p>
+        <textarea id="recheckModalNote" class="modal-textarea" rows="4" placeholder="复审说明（可留空）…" maxlength="2000"></textarea>
+        <div class="btn-row" style="margin-top:12px; justify-content:flex-end;">
+            <button type="button" class="btn btn-light" onclick="closeRecheckModal()">取消</button>
+            <button type="button" class="btn btn-primary" onclick="submitRecheckModal()">确定复审</button>
         </div>
     </div>
 </div>
@@ -106,7 +122,9 @@
                 <button class="menu-btn" data-page="adminPage" onclick="switchPage('adminPage', this)">管理员管理</button>
                 <button class="menu-btn" data-page="rbacPage" onclick="switchPage('rbacPage', this)">角色权限管理</button>
                 <button class="menu-btn" data-page="userPage" onclick="switchPage('userPage', this)">平台用户管理</button>
-                <button class="menu-btn" data-page="reviewPage" onclick="switchPage('reviewPage', this)">内容审核</button>
+                <button class="menu-btn" data-page="reviewPage" onclick="openReviewSectionFromMenu('queue', this)">内容审核</button>
+                <button class="menu-btn" id="sensitiveMenuBtn" onclick="openReviewSectionFromMenu('sensitive', this)">敏感词库</button>
+                <button class="menu-btn" id="reviewStatsMenuBtn" onclick="openReviewSectionFromMenu('stats', this)">审核统计</button>
                 <button class="menu-btn" data-page="artifactPage" onclick="switchPage('artifactPage', this)">文物数据管理</button>
                 <button class="menu-btn" data-page="integrationPage" onclick="switchPage('integrationPage', this)">子系统 API 代理</button>
                 <button class="menu-btn" data-page="logPage" onclick="switchPage('logPage', this)">日志管理</button>
@@ -124,7 +142,6 @@
                 <div id="dashboardPage" class="page active">
                     <div class="panel">
                         <h3>欢迎使用后台管理系统</h3>
-                        <p class="muted">左侧菜单可切换模块，页面已按后台系统布局拆分，不再堆叠在一页。</p>
                         <div class="toolbar" style="margin-top:10px;">
                             <button type="button" class="btn btn-light" onclick="loadDashboard()">刷新统计</button>
                         </div>
@@ -278,11 +295,18 @@
                 <div id="reviewPage" class="page">
                     <div class="panel">
                         <h3>内容审核</h3>
+                        <div class="toolbar" id="reviewSectionSwitcher" style="margin-bottom:8px;">
+                            <button class="btn btn-light" id="reviewTabQueue" onclick="setReviewSection('queue')">内容审核</button>
+                            <button class="btn btn-light" id="reviewTabSensitive" onclick="setReviewSection('sensitive')">敏感词库</button>
+                            <button class="btn btn-light" id="reviewTabStats" onclick="setReviewSection('stats')">审核统计</button>
+                        </div>
+                        <div id="reviewQueueSection">
                         <p class="muted" style="font-size:12px; margin:0 0 6px;">可按状态、类型、来源、提交人、关键词、提交时间、风险分组合筛选。</p>
                         <div class="toolbar">
                             <select class="select" id="reviewFilterStatus" title="审核状态">
                                 <option value="">全部状态</option>
                                 <option value="PENDING">待审核</option>
+                                <option value="RECHECK">待复审</option>
                                 <option value="APPROVED">已通过</option>
                                 <option value="REJECTED">已拒绝</option>
                             </select>
@@ -319,10 +343,95 @@
                                 <option value="APP">APP</option>
                             </select>
                             <input class="input" id="newReviewSubmitter" placeholder="提交人">
-                            <input class="input" id="newReviewRiskScore" type="number" min="0" max="100" placeholder="风险分0-100">
+                            <span class="muted" style="font-size:12px; align-self:center;">风险分由系统自动计算</span>
                             <input class="input" id="newReviewUrl" placeholder="内容URL(可选)">
                             <input class="input" id="newReviewText" placeholder="内容文本" style="min-width:280px;">
                             <button class="btn btn-primary" onclick="createReviewContent()">新增待审核</button>
+                        </div>
+                        <div class="toolbar" style="margin-top:8px;">
+                            <button class="btn btn-light" onclick="batchReviewAction('APPROVED')">批量通过</button>
+                            <button class="btn btn-light" onclick="batchReviewAction('RECHECK')">批量标记复审</button>
+                            <button class="btn btn-danger" onclick="batchReviewAction('REJECTED')">批量拒绝</button>
+                        </div>
+                        </div>
+                        <div id="reviewSensitiveSection">
+                        <div class="panel" style="margin-top:10px;">
+                            <h3 style="font-size:14px;">自动审核策略</h3>
+                            <div id="strategyCurrentView" class="muted" style="font-size:12px; margin-bottom:8px;"></div>
+                            <div class="muted" style="font-size:12px; margin-bottom:8px;">
+                                风险分说明：基础分0；每命中1个轻微敏感词+10；命中严重敏感词=100；图片轻微违规+10；图片严重违规=100；总分范围0-100。
+                            </div>
+                            <div class="inline">
+                                <input class="input" id="strategyLowMaxScore" type="number" min="0" max="100" placeholder="低风险上限" style="width:120px;">
+                                <input class="input" id="strategyMediumMaxScore" type="number" min="0" max="100" placeholder="中风险上限" style="width:120px;">
+                                <select class="select" id="strategyLowAction">
+                                    <option value="AUTO_APPROVE">低风险自动通过</option>
+                                    <option value="MANUAL_REVIEW">低风险转人工</option>
+                                    <option value="AUTO_REJECT">低风险自动拒绝</option>
+                                </select>
+                                <select class="select" id="strategyMediumAction">
+                                    <option value="MANUAL_REVIEW">中风险转人工</option>
+                                    <option value="AUTO_APPROVE">中风险自动通过</option>
+                                    <option value="AUTO_REJECT">中风险自动拒绝</option>
+                                </select>
+                                <select class="select" id="strategyHighAction">
+                                    <option value="AUTO_REJECT">高风险自动拒绝</option>
+                                    <option value="MANUAL_REVIEW">高风险转人工</option>
+                                    <option value="AUTO_APPROVE">高风险自动通过</option>
+                                </select>
+                                <button class="btn btn-light" onclick="loadReviewStrategy()">读取策略</button>
+                                <button class="btn btn-primary" onclick="saveReviewStrategy()">保存策略</button>
+                                <button class="btn btn-light" onclick="loadStrategyLogs()">查看操作日志</button>
+                            </div>
+                            <table id="reviewStrategyLogTable" style="margin-top:8px; display:none;"></table>
+                        </div>
+                        <div class="panel" style="margin-top:10px;">
+                            <h3 style="font-size:14px;">敏感词库</h3>
+                            <div class="inline">
+                                <input class="input" id="newSensitiveWord" placeholder="输入敏感词" style="min-width:180px;" oninput="clearSensitiveWordAddError()">
+                                <select class="select" id="newSensitiveWordLevel" title="敏感程度">
+                                    <option value="LIGHT">轻微</option>
+                                    <option value="SEVERE">严重</option>
+                                </select>
+                                <button class="btn btn-primary" onclick="addSensitiveWord()">新增敏感词</button>
+                                <button class="btn btn-light" onclick="loadSensitiveWords()">刷新词库</button>
+                                <button class="btn btn-light" onclick="loadSensitiveWordLogs()">查看操作日志</button>
+                            </div>
+                            <p id="sensitiveWordAddError" class="err" style="font-size:13px; margin:4px 0 0; display:none;" role="status"></p>
+                            <div class="inline" style="margin-top:6px; align-items:center;">
+                                <input class="input" id="sensitiveWordFilterWord" placeholder="按词语筛选(模糊)" style="min-width:200px;" title="空白表示不限">
+                                <select class="select" id="sensitiveWordFilterLevel" title="敏感程度">
+                                    <option value="">全部程度</option>
+                                    <option value="LIGHT">轻微</option>
+                                    <option value="SEVERE">严重</option>
+                                </select>
+                                <button class="btn btn-primary" onclick="loadSensitiveWords()">筛选</button>
+                                <button type="button" class="btn btn-light" onclick="resetSensitiveWordFilters()">清空条件</button>
+                            </div>
+                            <table id="sensitiveWordTable" style="margin-top:8px;"></table>
+                            <table id="sensitiveWordLogTable" style="margin-top:8px; display:none;"></table>
+                        </div>
+                        </div>
+                        <div id="reviewStatsSection">
+                        <div class="panel" style="margin-top:10px;">
+                            <h3 style="font-size:14px;">审核统计</h3>
+                            <div class="inline">
+                                <input class="input" id="reviewStatsFrom" type="datetime-local" title="统计起始">
+                                <input class="input" id="reviewStatsTo" type="datetime-local" title="统计结束">
+                                <button class="btn btn-light" onclick="loadReviewStats()">刷新统计</button>
+                            </div>
+                            <div id="reviewStatsSummary" class="inline" style="margin-top:6px;"></div>
+                            <table id="reviewStatsDailyTable" style="margin-top:8px;"></table>
+                            <p class="muted" style="font-size:12px; margin:10px 0 4px;">审核员与工作量</p>
+                            <div class="inline" id="reviewStatsReviewerToolbar" style="margin:0 0 6px; flex-wrap:wrap; align-items:center; gap:8px;">
+                                <span class="muted" style="font-size:12px; margin-right:2px;">显示范围</span>
+                                <button type="button" class="rev-stats-filter-btn" id="revStatsFilterAll" title="含所有在记录中出现的审核人（含系统账号等）" onclick="setReviewStatsReviewerFilter('all')">全部</button>
+                                <button type="button" class="rev-stats-filter-btn" id="revStatsFilterCr" title="仅统计「管理员角色为内容审核员」的账号" onclick="setReviewStatsReviewerFilter('contentReviewer')">内容审核员</button>
+                                <span class="muted" style="font-size:12px; margin-left:6px;">排序</span>
+                                <button type="button" class="rev-stats-sort-btn" id="reviewStatsSortWorkloadBtn" title="在「工作量由多到少」和「由少到多」之间切换" onclick="toggleReviewerWorkloadSort()">工作量：多→少</button>
+                            </div>
+                            <table id="reviewStatsReviewerTable" style="margin-top:0;"></table>
+                        </div>
                         </div>
                         <p id="reviewMsg" class="msg"></p>
                         <table id="reviewTable"></table>
@@ -410,6 +519,11 @@
 <script>
     let jwtToken = localStorage.getItem("jwtToken") || "";
     let currentAppRole = "";
+    let currentReviewSection = "queue";
+    let reviewStatsLastData = null;
+    let reviewStatsReviewerSortDesc = true;
+    /** 审核员表：'all' 全部 | 'contentReviewer' 仅内容审核员角色 */
+    let reviewStatsReviewerFilter = "all";
     let userListPage = 0;
     const userListSize = 20;
     const pageTitles = {
@@ -445,6 +559,7 @@
     }
     function reviewStatusToZh(s) {
         if (s === "PENDING") return "待审核";
+        if (s === "RECHECK") return "待复审";
         if (s === "APPROVED") return "已通过";
         if (s === "REJECTED") return "已拒绝";
         return s;
@@ -469,7 +584,11 @@
             CREATE_ADMIN: "创建管理员",
             UPDATE_ADMIN_STATUS: "更新管理员状态",
             UPDATE_ADMIN: "更新管理员",
-            DELETE_ADMIN: "删除管理员"
+            DELETE_ADMIN: "删除管理员",
+            CREATE_SENSITIVE_WORD: "新增敏感词",
+            UPDATE_SENSITIVE_WORD: "更新敏感词",
+            DELETE_SENSITIVE_WORD: "删除敏感词",
+            UPDATE_REVIEW_STRATEGY: "更新自动审核策略"
         };
         return m[t] || t;
     }
@@ -495,6 +614,12 @@
         if (rmax !== "") p.set("riskMax", rmax);
         return p;
     }
+    function selectedReviewIds() {
+        return Array.from(document.querySelectorAll(".review-pick:checked")).map(el => Number(el.getAttribute("data-id")));
+    }
+    function toggleAllReviews(checked) {
+        document.querySelectorAll(".review-pick").forEach(el => { el.checked = checked; });
+    }
     function resetReviewFilters() {
         document.getElementById("reviewFilterStatus").value = "";
         document.getElementById("reviewFilterType").value = "";
@@ -512,6 +637,25 @@
         el.textContent = text;
         el.className = ok ? "msg ok" : "msg err";
     }
+    function clearSensitiveWordAddError() {
+        const el = document.getElementById("sensitiveWordAddError");
+        if (!el) return;
+        el.textContent = "";
+        el.style.display = "none";
+    }
+    function setSensitiveWordAddError(text) {
+        const el = document.getElementById("sensitiveWordAddError");
+        if (!el) return;
+        if (!text) { clearSensitiveWordAddError(); return; }
+        el.textContent = text;
+        el.style.display = "block";
+    }
+    /** 内容审核子栏（待审/敏感词/统计）每次切换或再次点击同一栏时，清空该页提示，恢复初始态 */
+    function resetReviewSubsectionUI() {
+        const rm = document.getElementById("reviewMsg");
+        if (rm) { rm.textContent = ""; rm.className = "msg"; }
+        clearSensitiveWordAddError();
+    }
 
     function switchPage(pageId, btnEl) {
         document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
@@ -519,6 +663,36 @@
         document.querySelectorAll(".menu-btn").forEach(b => b.classList.remove("active"));
         if (btnEl) btnEl.classList.add("active");
         document.getElementById("pageTitle").textContent = pageTitles[pageId] || "后台管理";
+    }
+    function setReviewSection(section) {
+        resetReviewSubsectionUI();
+        currentReviewSection = section || "queue";
+        const queue = document.getElementById("reviewQueueSection");
+        const sensitive = document.getElementById("reviewSensitiveSection");
+        const stats = document.getElementById("reviewStatsSection");
+        if (queue) queue.style.display = currentReviewSection === "queue" ? "block" : "none";
+        if (sensitive) sensitive.style.display = currentReviewSection === "sensitive" ? "block" : "none";
+        if (stats) stats.style.display = currentReviewSection === "stats" ? "block" : "none";
+        const reviewMsg = document.getElementById("reviewMsg");
+        const reviewTable = document.getElementById("reviewTable");
+        if (reviewMsg) reviewMsg.style.display = (currentReviewSection === "queue" || currentReviewSection === "sensitive" || currentReviewSection === "stats") ? "block" : "none";
+        if (reviewTable) reviewTable.style.display = currentReviewSection === "queue" ? "table" : "none";
+        const q = document.getElementById("reviewTabQueue");
+        const s = document.getElementById("reviewTabSensitive");
+        const t = document.getElementById("reviewTabStats");
+        if (q) q.style.background = currentReviewSection === "queue" ? "var(--primary)" : "#eef2ff";
+        if (q) q.style.color = currentReviewSection === "queue" ? "#fff" : "var(--primary)";
+        if (s) s.style.background = currentReviewSection === "sensitive" ? "var(--primary)" : "#eef2ff";
+        if (s) s.style.color = currentReviewSection === "sensitive" ? "#fff" : "var(--primary)";
+        if (t) t.style.background = currentReviewSection === "stats" ? "var(--primary)" : "#eef2ff";
+        if (t) t.style.color = currentReviewSection === "stats" ? "#fff" : "var(--primary)";
+        document.getElementById("pageTitle").textContent =
+            currentReviewSection === "sensitive" ? "敏感词库" :
+            (currentReviewSection === "stats" ? "审核统计" : "内容审核");
+    }
+    function openReviewSectionFromMenu(section, btnEl) {
+        switchPage("reviewPage", btnEl);
+        setReviewSection(section);
     }
     function ensureDefaultPageVisible() {
         const active = document.querySelector(".menu-btn.active");
@@ -611,7 +785,13 @@
         if (role === "SUPER_ADMIN") { loadAdmins(); loadRolesAndPermissions(); }
         if (role === "SUPER_ADMIN") { loadPlatformUsers(); loadArtifacts(); loadIntegrationStatus(); }
         if (role === "DATA_ADMIN") { loadArtifacts(); }
-        if (role === "SUPER_ADMIN" || role === "CONTENT_REVIEWER") { loadReviewContents(); }
+        if (role === "SUPER_ADMIN" || role === "CONTENT_REVIEWER") {
+            loadReviewContents();
+            loadReviewStats();
+            loadSensitiveWords();
+            if (role === "SUPER_ADMIN" || role === "CONTENT_REVIEWER") { loadReviewStrategy(); }
+            setReviewSection("queue");
+        }
         if (role === "SUPER_ADMIN") { loadLogs(); }
     }
 
@@ -906,8 +1086,8 @@
         } catch (e) { alert("数据修改日志加载失败: " + e.message); }
     }
 
-    function goToPendingReviews() {
-        document.getElementById("reviewFilterStatus").value = "PENDING";
+    function goToReviewQueueWithStatus(status) {
+        document.getElementById("reviewFilterStatus").value = status;
         document.getElementById("reviewFilterType").value = "";
         document.getElementById("reviewFilterSource").value = "";
         document.getElementById("reviewFilterSubmitter").value = "";
@@ -917,15 +1097,18 @@
         document.getElementById("reviewFilterRiskMin").value = "";
         document.getElementById("reviewFilterRiskMax").value = "";
         const btn = document.querySelector('.menu-btn[data-page="reviewPage"]');
-        switchPage("reviewPage", btn);
+        openReviewSectionFromMenu("queue", btn);
         loadReviewContents();
     }
+    function goToPendingReviews() { goToReviewQueueWithStatus("PENDING"); }
+    function goToRecheckReviews() { goToReviewQueueWithStatus("RECHECK"); }
 
     async function loadDashboard() {
         try {
             const data = await api("/api/admin/dashboard/overview");
             const trend = (data.loginTrend7d || []).map(x => `${x.date}:${x.count}`).join(" | ");
             const pending = data.pendingReviews != null ? data.pendingReviews : 0;
+            const recheck = data.recheckReviews != null ? data.recheckReviews : 0;
             const fullBadges = `
                 <span class="badge">总用户数: ${data.totalUsers}</span>
                 <span class="badge">今日新增用户: ${data.todayNewUsers}</span>
@@ -937,11 +1120,18 @@
             if (overviewEl) {
                 if (currentAppRole === "CONTENT_REVIEWER") {
                     overviewEl.innerHTML = `
-                        <button type="button" class="dashboard-pending-card" onclick="goToPendingReviews()">
+                        <div class="inline" style="align-items:stretch; gap:12px; width:100%;">
+                        <button type="button" class="dashboard-pending-card" style="max-width:360px; flex:1; min-width:200px;" onclick="goToPendingReviews()">
                             <div class="num">${pending}</div>
                             <div style="font-size:15px;font-weight:700;margin-top:4px;">待审核</div>
                             <p class="muted" style="margin:8px 0 0;font-size:12px;">点击进入内容审核，并自动筛选为「待审核」队列。</p>
                         </button>
+                        <button type="button" class="dashboard-pending-card" style="max-width:360px; flex:1; min-width:200px;" onclick="goToRecheckReviews()">
+                            <div class="num">${recheck}</div>
+                            <div style="font-size:15px;font-weight:700;margin-top:4px;">待复审</div>
+                            <p class="muted" style="margin:8px 0 0;font-size:12px;">点击进入内容审核，并自动筛选为「待复审」队列。</p>
+                        </button>
+                        </div>
                     `;
                 } else {
                     overviewEl.innerHTML = fullBadges;
@@ -1151,6 +1341,14 @@
             if (!p) { btn.style.display = "block"; return; }
             btn.style.display = allow.has(p) ? "block" : "none";
         });
+        const sensitiveMenuBtn = document.getElementById("sensitiveMenuBtn");
+        const reviewStatsMenuBtn = document.getElementById("reviewStatsMenuBtn");
+        if (sensitiveMenuBtn) sensitiveMenuBtn.style.display = role === "CONTENT_REVIEWER" ? "block" : "none";
+        if (reviewStatsMenuBtn) reviewStatsMenuBtn.style.display = role === "CONTENT_REVIEWER" ? "block" : "none";
+        const switcher = document.getElementById("reviewSectionSwitcher");
+        if (switcher) switcher.style.display = role === "SUPER_ADMIN" ? "flex" : "none";
+        const strategyPanel = document.getElementById("strategyLowMaxScore")?.closest(".panel");
+        if (strategyPanel) strategyPanel.style.display = (role === "SUPER_ADMIN" || role === "CONTENT_REVIEWER") ? "block" : "none";
         ensureDefaultPageVisible();
     }
 
@@ -1160,8 +1358,14 @@
             const path = p.toString() ? `/api/admin/reviews?${p}` : "/api/admin/reviews";
             const data = await api(path);
             document.getElementById("reviewTable").innerHTML =
-                "<tr><th>ID</th><th>类型</th><th>来源</th><th>提交人</th><th>文本</th><th>风险分</th><th>状态</th><th>提交时间</th><th>拒绝原因</th><th>审核人</th><th>操作</th></tr>" +
-                data.map(x => `<tr><td>${x.id}</td><td><span class="badge">${contentTypeToZh(x.contentType)}</span></td><td>${x.sourceSystem}</td><td>${x.submitter}</td><td>${x.contentText}</td><td>${x.riskScore}</td><td><span class="badge">${reviewStatusToZh(x.reviewStatus)}</span></td><td>${x.submitTime || ""}</td><td>${x.rejectReason || ""}</td><td>${x.reviewer || ""}</td><td>${x.reviewStatus === "PENDING" ? `<button class="btn btn-success" onclick="reviewAction(${x.id}, 'APPROVED')">通过</button> <button class="btn btn-danger" onclick="reviewAction(${x.id}, 'REJECTED')">拒绝</button>` : ""}</td></tr>`).join("");
+                "<tr><th><input type=\"checkbox\" onchange=\"toggleAllReviews(this.checked)\"></th><th>ID</th><th>类型</th><th>来源</th><th>提交人</th><th>文本</th><th>风险分</th><th>状态</th><th>自动审核</th><th>提交时间</th><th>拒绝/复审原因</th><th>审核人</th><th>操作</th></tr>" +
+                data.map(x => {
+                    const ops = (x.reviewStatus === "PENDING" || x.reviewStatus === "RECHECK")
+                        ? `<button class="btn btn-success" onclick="reviewAction(${x.id}, 'APPROVED')">通过</button> <button class="btn btn-light" onclick="reviewAction(${x.id}, 'RECHECK')">复审</button> <button class="btn btn-danger" onclick="reviewAction(${x.id}, 'REJECTED')">拒绝</button>`
+                        : `<button class="btn btn-light" onclick="reviewAction(${x.id}, 'RECHECK')">标记复审</button>`;
+                    const auto = x.autoReviewed ? (x.autoDecisionNote || "已自动审核") : "人工";
+                    return `<tr><td><input type="checkbox" class="review-pick" data-id="${x.id}"></td><td>${x.id}</td><td><span class="badge">${contentTypeToZh(x.contentType)}</span></td><td>${x.sourceSystem}</td><td>${x.submitter}</td><td>${x.contentText}</td><td>${x.riskScore}</td><td><span class="badge">${reviewStatusToZh(x.reviewStatus)}</span></td><td>${auto}</td><td>${x.submitTime || ""}</td><td>${x.rejectReason || ""}</td><td>${x.reviewer || ""}</td><td>${ops}</td></tr>`;
+                }).join("");
             setMsg("reviewMsg", "加载成功", true);
         } catch (e) { setMsg("reviewMsg", e.message, false); }
     }
@@ -1170,11 +1374,10 @@
         try {
             const payload = {
                 contentType: document.getElementById("newReviewType").value,
-                sourceSystem: document.getElementById("newReviewSourceSystem").value.trim(),
+                sourceSystem: document.getElementById("newReviewSourceSystem").value,
                 submitter: document.getElementById("newReviewSubmitter").value.trim(),
                 contentText: document.getElementById("newReviewText").value.trim(),
-                contentUrl: document.getElementById("newReviewUrl").value.trim() || null,
-                riskScore: Number(document.getElementById("newReviewRiskScore").value || 0)
+                contentUrl: document.getElementById("newReviewUrl").value.trim() || null
             };
             await api("/api/admin/reviews", { method: "POST", body: JSON.stringify(payload) });
             setMsg("reviewMsg", "新增待审核内容成功");
@@ -1183,8 +1386,29 @@
     }
 
     let rejectModalReviewId = null;
+    let rejectModalBatchIds = null;
     function openRejectModal(reviewId) {
+        rejectModalBatchIds = null;
         rejectModalReviewId = reviewId;
+        const t = document.getElementById("rejectModalTitle");
+        const h = document.getElementById("rejectModalHelp");
+        if (t) t.textContent = "填写拒绝原因";
+        if (h) h.textContent = "将记录在审核单中，不填写无法提交拒绝。";
+        const m = document.getElementById("rejectModal");
+        const ta = document.getElementById("rejectModalReason");
+        ta.value = "";
+        m.classList.add("open");
+        m.setAttribute("aria-hidden", "false");
+        setTimeout(() => ta.focus(), 0);
+    }
+    function openBatchRejectModal(ids) {
+        if (!ids || !ids.length) return;
+        rejectModalReviewId = null;
+        rejectModalBatchIds = ids.slice();
+        const t = document.getElementById("rejectModalTitle");
+        const h = document.getElementById("rejectModalHelp");
+        if (t) t.textContent = `批量填写拒绝原因（${ids.length} 条）`;
+        if (h) h.textContent = "将逐条记录在审核单中，不填写无法提交拒绝。";
         const m = document.getElementById("rejectModal");
         const ta = document.getElementById("rejectModalReason");
         ta.value = "";
@@ -1197,33 +1421,323 @@
         m.classList.remove("open");
         m.setAttribute("aria-hidden", "true");
         rejectModalReviewId = null;
+        rejectModalBatchIds = null;
     }
     async function submitRejectModal() {
-        const id = rejectModalReviewId;
-        if (id == null) return;
         const rejectReason = document.getElementById("rejectModalReason").value.trim();
         if (!rejectReason) { setMsg("reviewMsg", "请填写拒绝原因", false); return; }
+        if (rejectModalBatchIds && rejectModalBatchIds.length) {
+            try {
+                const p = new URLSearchParams();
+                rejectModalBatchIds.forEach(id => p.append("ids", String(id)));
+                await api(`/api/admin/reviews/batch/action?${p.toString()}`, {
+                    method: "PATCH",
+                    body: JSON.stringify({ reviewStatus: "REJECTED", rejectReason })
+                });
+                closeRejectModal();
+                setMsg("reviewMsg", "批量审核成功", true);
+                await loadReviewContents();
+                await loadReviewStats();
+            } catch (e) { setMsg("reviewMsg", e.message, false); }
+            return;
+        }
+        const id = rejectModalReviewId;
+        if (id == null) return;
         try {
             await api(`/api/admin/reviews/${id}/action`, { method: "PATCH", body: JSON.stringify({ reviewStatus: "REJECTED", rejectReason }) });
             closeRejectModal();
             setMsg("reviewMsg", "审核操作成功", true);
             await loadReviewContents();
+            await loadReviewStats();
+        } catch (e) { setMsg("reviewMsg", e.message, false); }
+    }
+    let recheckModalIds = null;
+    function openRecheckModal(ids) {
+        if (!ids || !ids.length) return;
+        recheckModalIds = ids.slice();
+        const title = document.getElementById("recheckModalTitle");
+        if (title) title.textContent = ids.length > 1 ? `批量标记复审（${ids.length} 条）` : "填写复审备注";
+        const m = document.getElementById("recheckModal");
+        const ta = document.getElementById("recheckModalNote");
+        ta.value = "";
+        m.classList.add("open");
+        m.setAttribute("aria-hidden", "false");
+        setTimeout(() => ta.focus(), 0);
+    }
+    function closeRecheckModal() {
+        const m = document.getElementById("recheckModal");
+        m.classList.remove("open");
+        m.setAttribute("aria-hidden", "true");
+        recheckModalIds = null;
+    }
+    async function submitRecheckModal() {
+        if (!recheckModalIds || !recheckModalIds.length) return;
+        const note = document.getElementById("recheckModalNote").value.trim() || null;
+        try {
+            if (recheckModalIds.length === 1) {
+                await api(`/api/admin/reviews/${recheckModalIds[0]}/action`, { method: "PATCH", body: JSON.stringify({ reviewStatus: "RECHECK", rejectReason: note }) });
+            } else {
+                const p = new URLSearchParams();
+                recheckModalIds.forEach(id => p.append("ids", String(id)));
+                await api(`/api/admin/reviews/batch/action?${p.toString()}`, { method: "PATCH", body: JSON.stringify({ reviewStatus: "RECHECK", rejectReason: note }) });
+            }
+            closeRecheckModal();
+            setMsg("reviewMsg", "审核操作成功", true);
+            await loadReviewContents();
+            await loadReviewStats();
+        } catch (e) { setMsg("reviewMsg", e.message, false); }
+    }
+
+    async function batchReviewAction(status) {
+        const ids = selectedReviewIds();
+        if (!ids.length) { setMsg("reviewMsg", "请先勾选待操作内容", false); return; }
+        if (status === "RECHECK") {
+            openRecheckModal(ids);
+            return;
+        }
+        if (status === "REJECTED") {
+            openBatchRejectModal(ids);
+            return;
+        }
+        const p = new URLSearchParams();
+        ids.forEach(id => p.append("ids", String(id)));
+        let rejectReason = null;
+        try {
+            await api(`/api/admin/reviews/batch/action?${p.toString()}`, {
+                method: "PATCH",
+                body: JSON.stringify({ reviewStatus: status, rejectReason })
+            });
+            setMsg("reviewMsg", "批量审核成功", true);
+            await loadReviewContents();
+            await loadReviewStats();
+        } catch (e) { setMsg("reviewMsg", e.message, false); }
+    }
+    function hideReviewSectionLogTables() {
+        const st = document.getElementById("reviewStrategyLogTable");
+        const wt = document.getElementById("sensitiveWordLogTable");
+        if (st) st.style.display = "none";
+        if (wt) wt.style.display = "none";
+    }
+    async function loadStrategyLogs() {
+        try {
+            const data = await api("/api/admin/reviews/strategy/logs");
+            const logTable = document.getElementById("reviewStrategyLogTable");
+            if (!logTable) return;
+            hideReviewSectionLogTables();
+            logTable.style.display = "table";
+            logTable.innerHTML =
+                "<tr><th>ID</th><th>操作人</th><th>类型</th><th>对象</th><th>详情</th><th>时间</th></tr>" +
+                data.map(x => `<tr><td>${x.id}</td><td>${x.operator}</td><td>${operationTypeToZh(x.operationType)}</td><td>${x.operationTarget}</td><td>${x.details || ""}</td><td>${x.operationTime || ""}</td></tr>`).join("");
+        } catch (e) { setMsg("reviewMsg", e.message, false); }
+    }
+    function buildSensitiveWordListQuery() {
+        const p = new URLSearchParams();
+        const kw = document.getElementById("sensitiveWordFilterWord") && document.getElementById("sensitiveWordFilterWord").value.trim();
+        const lv = document.getElementById("sensitiveWordFilterLevel") && document.getElementById("sensitiveWordFilterLevel").value;
+        if (kw) p.set("keyword", kw);
+        if (lv) p.set("level", lv);
+        return p.toString() ? `?${p.toString()}` : "";
+    }
+    function resetSensitiveWordFilters() {
+        const w = document.getElementById("sensitiveWordFilterWord");
+        const s = document.getElementById("sensitiveWordFilterLevel");
+        if (w) w.value = "";
+        if (s) s.value = "";
+        loadSensitiveWords();
+    }
+    async function loadSensitiveWords() {
+        try {
+            const data = await api("/api/admin/reviews/sensitive-words" + buildSensitiveWordListQuery());
+            const table = document.getElementById("sensitiveWordTable");
+            if (!table) return;
+            const logTable = document.getElementById("sensitiveWordLogTable");
+            if (logTable) logTable.style.display = "none";
+            const st = document.getElementById("reviewStrategyLogTable");
+            if (st) st.style.display = "none";
+            table.innerHTML =
+                "<tr><th>ID</th><th>词语</th><th>敏感程度</th><th>状态</th><th>创建时间</th><th>操作</th></tr>" +
+                data.map(x => `<tr><td>${x.id}</td><td>${x.word}</td><td><select class="select" style="min-width:90px;height:30px;" onchange="changeSensitiveLevel(${x.id}, this.value)"><option value="LIGHT" ${x.level === "LIGHT" ? "selected" : ""}>轻微</option><option value="SEVERE" ${x.level === "SEVERE" ? "selected" : ""}>严重</option></select></td><td>${x.enabled ? "启用" : "停用"}</td><td>${x.createdAt || ""}</td><td><button class="btn btn-light" onclick="toggleSensitiveWord(${x.id}, ${!x.enabled})">${x.enabled ? "停用" : "启用"}</button> <button class="btn btn-danger" onclick="deleteSensitiveWord(${x.id})">删除</button></td></tr>`).join("");
+        } catch (e) { setMsg("reviewMsg", e.message, false); }
+    }
+    async function addSensitiveWord() {
+        const word = document.getElementById("newSensitiveWord").value.trim();
+        const level = document.getElementById("newSensitiveWordLevel").value;
+        clearSensitiveWordAddError();
+        if (!word) { setMsg("reviewMsg", "请输入敏感词", false); return; }
+        try {
+            await api(`/api/admin/reviews/sensitive-words?word=${encodeURIComponent(word)}&level=${encodeURIComponent(level)}`, { method: "POST" });
+            document.getElementById("newSensitiveWord").value = "";
+            setMsg("reviewMsg", "敏感词已添加", true);
+            await loadSensitiveWords();
+        } catch (e) {
+            const raw = (e && e.message) ? String(e.message) : "请求失败";
+            const isDup = raw.indexOf("已存在") >= 0;
+            const tip = isDup ? "该词语已存在" : raw;
+            setSensitiveWordAddError(tip);
+            setMsg("reviewMsg", tip, false);
+        }
+    }
+    async function toggleSensitiveWord(id, enabled) {
+        try {
+            await api(`/api/admin/reviews/sensitive-words/${id}?enabled=${enabled}`, { method: "PATCH" });
+            await loadSensitiveWords();
+        } catch (e) { setMsg("reviewMsg", e.message, false); }
+    }
+    async function changeSensitiveLevel(id, level) {
+        try {
+            await api(`/api/admin/reviews/sensitive-words/${id}?level=${encodeURIComponent(level)}`, { method: "PATCH" });
+            setMsg("reviewMsg", "敏感词级别已更新", true);
+            await loadSensitiveWords();
+        } catch (e) { setMsg("reviewMsg", e.message, false); }
+    }
+    async function loadSensitiveWordLogs() {
+        try {
+            const data = await api("/api/admin/reviews/sensitive-words/logs");
+            const logTable = document.getElementById("sensitiveWordLogTable");
+            if (!logTable) return;
+            const st = document.getElementById("reviewStrategyLogTable");
+            if (st) st.style.display = "none";
+            logTable.style.display = "table";
+            logTable.innerHTML =
+                "<tr><th>ID</th><th>操作人</th><th>类型</th><th>对象</th><th>详情</th><th>时间</th></tr>" +
+                data.map(x => `<tr><td>${x.id}</td><td>${x.operator}</td><td>${operationTypeToZh(x.operationType)}</td><td>${x.operationTarget}</td><td>${x.details || ""}</td><td>${x.operationTime || ""}</td></tr>`).join("");
+        } catch (e) { setMsg("reviewMsg", e.message, false); }
+    }
+    async function deleteSensitiveWord(id) {
+        if (!confirm("确认删除该敏感词？")) return;
+        try {
+            await api(`/api/admin/reviews/sensitive-words/${id}`, { method: "DELETE" });
+            await loadSensitiveWords();
+        } catch (e) { setMsg("reviewMsg", e.message, false); }
+    }
+    async function loadReviewStrategy() {
+        try {
+            const s = await api("/api/admin/reviews/strategy");
+            document.getElementById("strategyLowMaxScore").value = s.lowRiskMaxScore;
+            document.getElementById("strategyMediumMaxScore").value = s.mediumRiskMaxScore;
+            document.getElementById("strategyLowAction").value = s.lowRiskAction;
+            document.getElementById("strategyMediumAction").value = s.mediumRiskAction;
+            document.getElementById("strategyHighAction").value = s.highRiskAction;
+            const cur = document.getElementById("strategyCurrentView");
+            if (cur) {
+                cur.textContent = `当前策略：低风险(0-${s.lowRiskMaxScore})=${strategyActionToZh(s.lowRiskAction)}；中风险(${Number(s.lowRiskMaxScore)+1}-${s.mediumRiskMaxScore})=${strategyActionToZh(s.mediumRiskAction)}；高风险(${Number(s.mediumRiskMaxScore)+1}-100)=${strategyActionToZh(s.highRiskAction)}`;
+            }
+        } catch (e) { setMsg("reviewMsg", e.message, false); }
+    }
+    function strategyActionToZh(a) {
+        if (a === "AUTO_APPROVE") return "自动通过";
+        if (a === "AUTO_REJECT") return "自动拦截";
+        if (a === "MANUAL_REVIEW") return "转人工审核";
+        return a || "";
+    }
+    async function saveReviewStrategy() {
+        const low = Number(document.getElementById("strategyLowMaxScore").value || 20);
+        const medium = Number(document.getElementById("strategyMediumMaxScore").value || 60);
+        if (Number.isNaN(low) || Number.isNaN(medium)) { setMsg("reviewMsg", "阈值必须为数字", false); return; }
+        if (low < 0 || medium > 100 || low >= medium) { setMsg("reviewMsg", "阈值需满足 0<=低风险上限<中风险上限<=100", false); return; }
+        const payload = {
+            lowRiskMaxScore: low,
+            mediumRiskMaxScore: medium,
+            lowRiskAction: document.getElementById("strategyLowAction").value,
+            mediumRiskAction: document.getElementById("strategyMediumAction").value,
+            highRiskAction: document.getElementById("strategyHighAction").value
+        };
+        try {
+            await api("/api/admin/reviews/strategy", { method: "PUT", body: JSON.stringify(payload) });
+            setMsg("reviewMsg", "审核策略已保存", true);
+            await loadReviewStrategy();
+        } catch (e) { setMsg("reviewMsg", e.message, false); }
+    }
+    function updateReviewerSortButtonLabel() {
+        const b = document.getElementById("reviewStatsSortWorkloadBtn");
+        if (b) b.textContent = reviewStatsReviewerSortDesc ? "工作量：多→少" : "工作量：少→多";
+    }
+    function getReviewerWorkloadForView() {
+        if (!reviewStatsLastData) return {};
+        if (reviewStatsReviewerFilter === "contentReviewer") {
+            return reviewStatsLastData.contentReviewerWorkload || {};
+        }
+        return reviewStatsLastData.reviewerWorkload || {};
+    }
+    function updateReviewStatsFilterButtonStyles() {
+        const allB = document.getElementById("revStatsFilterAll");
+        const crB = document.getElementById("revStatsFilterCr");
+        if (allB) { allB.className = "rev-stats-filter-btn" + (reviewStatsReviewerFilter === "all" ? " on" : ""); }
+        if (crB) { crB.className = "rev-stats-filter-btn" + (reviewStatsReviewerFilter === "contentReviewer" ? " on" : ""); }
+    }
+    function setReviewStatsReviewerFilter(mode) {
+        if (mode !== "all" && mode !== "contentReviewer") return;
+        reviewStatsReviewerFilter = mode;
+        updateReviewStatsFilterButtonStyles();
+        renderReviewerWorkloadTable();
+    }
+    function renderReviewerWorkloadTable() {
+        const tbl = document.getElementById("reviewStatsReviewerTable");
+        if (!tbl || !reviewStatsLastData) {
+            if (tbl) tbl.innerHTML = "<tr><th>审核员</th><th>工作量</th></tr>";
+            updateReviewStatsFilterButtonStyles();
+            return;
+        }
+        const workload = getReviewerWorkloadForView();
+        const entries = Object.entries(workload);
+        entries.sort((a, b) => {
+            const c = (reviewStatsReviewerSortDesc ? b[1] - a[1] : a[1] - b[1]);
+            if (c !== 0) return c;
+            return String(a[0]).localeCompare(String(b[0]), "zh-CN");
+        });
+        updateReviewerSortButtonLabel();
+        updateReviewStatsFilterButtonStyles();
+        tbl.innerHTML = "<tr><th>审核员</th><th>工作量</th></tr>" +
+            entries.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("");
+    }
+    function toggleReviewerWorkloadSort() {
+        if (!reviewStatsLastData) { loadReviewStats(); return; }
+        reviewStatsReviewerSortDesc = !reviewStatsReviewerSortDesc;
+        renderReviewerWorkloadTable();
+    }
+    async function loadReviewStats() {
+        const p = new URLSearchParams();
+        const from = localDateTimeToApi(document.getElementById("reviewStatsFrom").value);
+        const to = localDateTimeToApi(document.getElementById("reviewStatsTo").value);
+        if (from) p.set("from", from);
+        if (to) p.set("to", to);
+        const path = p.toString() ? `/api/admin/reviews/stats?${p}` : "/api/admin/reviews/stats";
+        try {
+            const data = await api(path);
+            reviewStatsLastData = data;
+            const sum = document.getElementById("reviewStatsSummary");
+            if (sum) sum.innerHTML = `<span class="badge">总审核量: ${data.totalReviewed || 0}</span><span class="badge">通过率: ${data.approveRate || 0}%</span><span class="badge">拒绝率: ${data.rejectRate || 0}%</span>`;
+            const daily = document.getElementById("reviewStatsDailyTable");
+            if (daily) {
+                daily.innerHTML = "<tr><th>日期 <span class=\"muted\" style=\"font-weight:400;\">(近→早)</span></th><th>审核量</th><th>通过</th><th>拒绝</th><th>通过率</th><th>拒绝率</th></tr>" +
+                    ((data.daily || []).map(x => `<tr><td>${x.date}</td><td>${x.total}</td><td>${x.approved}</td><td>${x.rejected}</td><td>${x.approveRate}%</td><td>${x.rejectRate}%</td></tr>`).join(""));
+            }
+            renderReviewerWorkloadTable();
         } catch (e) { setMsg("reviewMsg", e.message, false); }
     }
     document.getElementById("rejectModal").addEventListener("click", (e) => { if (e.target.id === "rejectModal") { closeRejectModal(); } });
+    document.getElementById("recheckModal").addEventListener("click", (e) => { if (e.target.id === "recheckModal") { closeRecheckModal(); } });
     document.addEventListener("keydown", (e) => {
+        if (e.key !== "Escape") return;
+        const recheck = document.getElementById("recheckModal");
+        if (recheck.classList.contains("open")) { closeRecheckModal(); return; }
         const m = document.getElementById("rejectModal");
-        if (e.key === "Escape" && m.classList.contains("open")) { closeRejectModal(); }
+        if (m.classList.contains("open")) { closeRejectModal(); }
     });
     async function reviewAction(id, status) {
         if (status === "REJECTED") {
             openRejectModal(id);
             return;
         }
+        if (status === "RECHECK") {
+            openRecheckModal([id]);
+            return;
+        }
         try {
             await api(`/api/admin/reviews/${id}/action`, { method: "PATCH", body: JSON.stringify({ reviewStatus: status, rejectReason: null }) });
             setMsg("reviewMsg", "审核操作成功", true);
             await loadReviewContents();
+            await loadReviewStats();
         } catch (e) { setMsg("reviewMsg", e.message, false); }
     }
 

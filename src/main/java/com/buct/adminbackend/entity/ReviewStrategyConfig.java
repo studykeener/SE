@@ -15,10 +15,10 @@ public class ReviewStrategyConfig {
     private Long id = 1L;
 
     @Column(nullable = false)
-    private Integer lowRiskThreshold = 30;
+    private Integer lowRiskMaxScore = 20;
 
     @Column(nullable = false)
-    private Integer highRiskThreshold = 80;
+    private Integer mediumRiskMaxScore = 60;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
@@ -26,9 +26,9 @@ public class ReviewStrategyConfig {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
-    private AutoReviewAction highRiskAction = AutoReviewAction.MANUAL_REVIEW;
+    private AutoReviewAction mediumRiskAction = AutoReviewAction.MANUAL_REVIEW;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
-    private AutoReviewAction imageViolationAction = AutoReviewAction.AUTO_REJECT;
+    private AutoReviewAction highRiskAction = AutoReviewAction.AUTO_REJECT;
 }

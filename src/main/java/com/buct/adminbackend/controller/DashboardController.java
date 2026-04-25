@@ -32,6 +32,7 @@ public class DashboardController {
         Map<String, Object> data = new HashMap<>();
         long totalUsers = platformUserRepository.count();
         long pendingReviews = reviewContentRepository.countByReviewStatus(ReviewStatus.PENDING);
+        long recheckReviews = reviewContentRepository.countByReviewStatus(ReviewStatus.RECHECK);
         long totalArtifacts = artifactRepository.count();
 
         long todayNewUsers = platformUserRepository.findAll().stream()
@@ -41,6 +42,7 @@ public class DashboardController {
         data.put("totalUsers", totalUsers);
         data.put("todayNewUsers", todayNewUsers);
         data.put("pendingReviews", pendingReviews);
+        data.put("recheckReviews", recheckReviews);
         data.put("totalArtifacts", totalArtifacts);
         data.put("loginTrend7d", buildLoginTrend());
         return ApiResponse.ok(data);

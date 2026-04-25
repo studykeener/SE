@@ -40,12 +40,16 @@ D:\SE\admin-backend\src\main\java\com\buct\adminbackend\entity\OperationLog.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\entity\PermissionDefinition.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\entity\PlatformUser.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\entity\ReviewContent.java
+D:\SE\admin-backend\src\main\java\com\buct\adminbackend\entity\ReviewStrategyConfig.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\entity\RoleDefinition.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\entity\RolePermissionAssignment.java
+D:\SE\admin-backend\src\main\java\com\buct\adminbackend\entity\SensitiveWord.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\entity\UserBehaviorRecord.java
+D:\SE\admin-backend\src\main\java\com\buct\adminbackend\enums\AutoReviewAction.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\enums\ContentType.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\enums\ReviewStatus.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\enums\RoleType.java
+D:\SE\admin-backend\src\main\java\com\buct\adminbackend\enums\SensitiveWordLevel.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\enums\UserSource.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\enums\UserStatus.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\repository\AdminRoleAssignmentRepository.java
@@ -57,8 +61,10 @@ D:\SE\admin-backend\src\main\java\com\buct\adminbackend\repository\OperationLogR
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\repository\PermissionDefinitionRepository.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\repository\PlatformUserRepository.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\repository\ReviewContentRepository.java
+D:\SE\admin-backend\src\main\java\com\buct\adminbackend\repository\ReviewStrategyConfigRepository.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\repository\RoleDefinitionRepository.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\repository\RolePermissionAssignmentRepository.java
+D:\SE\admin-backend\src\main\java\com\buct\adminbackend\repository\SensitiveWordRepository.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\repository\UserBehaviorRecordRepository.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\security\JwtAuthenticationFilter.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\security\JwtService.java

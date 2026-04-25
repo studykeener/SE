@@ -1,5 +1,6 @@
 package com.buct.adminbackend.entity;
 
+import com.buct.adminbackend.enums.SensitiveWordLevel;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -21,6 +22,10 @@ public class SensitiveWord {
 
     @Column(nullable = false)
     private Boolean enabled = true;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private SensitiveWordLevel level = SensitiveWordLevel.LIGHT;
 
     @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
