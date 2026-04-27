@@ -1,0 +1,18 @@
+# Maven build output
+target/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Local NSFW ONNX model (file too large for GitHub, download on first run)
+models/
+*.onnx
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

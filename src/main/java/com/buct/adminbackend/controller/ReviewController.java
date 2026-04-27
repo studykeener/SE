@@ -18,6 +18,7 @@ import com.buct.adminbackend.repository.ReviewContentRepository;
 import com.buct.adminbackend.repository.ReviewStrategyConfigRepository;
 import com.buct.adminbackend.repository.SensitiveWordRepository;
 import com.buct.adminbackend.repository.OperationLogRepository;
+import com.buct.adminbackend.service.ImageModerationService;
 import com.buct.adminbackend.service.OperationLogService;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.validation.Valid;
@@ -45,12 +46,16 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ReviewController {
 
+    private static final int IMAGE_LOW_RISK_MAX_SCORE = 30;
+    private static final int IMAGE_MEDIUM_RISK_MAX_SCORE = 60;
+
     private final ReviewContentRepository reviewContentRepository;
     private final AdminUserRepository adminUserRepository;
     private final SensitiveWordRepository sensitiveWordRepository;
     private final ReviewStrategyConfigRepository reviewStrategyConfigRepository;
     private final OperationLogRepository operationLogRepository;
     private final OperationLogService operationLogService;
+    private final ImageModerationService imageModerationService;
 
     @GetMapping
     @PreAuthorize("hasAnyRole('SUPER_ADMIN','CONTENT_REVIEWER')")
@@ -415,6 +420,9 @@ public class ReviewController {
     }
 
     private boolean applyAutoReview(ReviewContent content) {
+        if (content.getContentType() == ContentType.IMAGE) {
+            return applyImageAutoReview(content);
+        }
         ReviewStrategyConfig cfg = getOrCreateStrategy();
         content.setAutoReviewed(true);
         int risk = content.getRiskScore() == null ? 0 : content.getRiskScore();
@@ -431,6 +439,21 @@ public class ReviewController {
             return content.getReviewStatus() == ReviewStatus.REJECTED;
         }
         return false;
+    }
+
+    private boolean applyImageAutoReview(ReviewContent content) {
+        content.setAutoReviewed(true);
+        int risk = content.getRiskScore() == null ? 0 : content.getRiskScore();
+        if (risk < IMAGE_LOW_RISK_MAX_SCORE) {
+            applyAutoAction(content, AutoReviewAction.AUTO_APPROVE, "图片低风险自动审核");
+            return false;
+        }
+        if (risk < IMAGE_MEDIUM_RISK_MAX_SCORE) {
+            applyAutoAction(content, AutoReviewAction.MANUAL_REVIEW, "图片中风险转人工审核");
+            return false;
+        }
+        applyAutoAction(content, AutoReviewAction.AUTO_REJECT, "图片高风险自动审核");
+        return true;
     }
 
     private void applyAutoAction(ReviewContent content, AutoReviewAction action, String reason) {
@@ -476,6 +499,8 @@ public class ReviewController {
         }
         int score = lightHits * 10;
         if (content.getContentType() == ContentType.IMAGE) {
+            int imageScore = imageModerationService.scoreImage(content.getContentUrl(), content.getContentText());
+            score = Math.max(score, imageScore);
             if (isSeriousImageViolation(content)) return 100;
             if (isImageViolation(content)) score += 10;
         }
