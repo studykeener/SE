@@ -1,21 +1,69 @@
-# 后台管理子系统（基础版）
+# 后台管理子系统
 
 ## 1. 技术栈
 - Java 17
 - Spring Boot 3
 - Spring Security + JWT
-- Spring Data JPA
+- Spring Data JPA (Hibernate)
 - MySQL 8
+- 单页前端：`src/main/resources/static/index.html`
 
-## 2. 已完成功能（基础开发）
-- 登录与鉴权：管理员 JWT 登录、按角色显示菜单
-- 角色权限管理：角色列表、权限列表、管理员分配角色、角色分配权限
-- 用户管理：列表/详情、启用禁用、评论上传限制、行为记录查看与新增
-- 内容审核：待审队列、详情、单条审核、批量审核
-- 文物管理：列表/新增/编辑/删除、CSV 导入导出、图谱同步状态字段
-- 日志管理：操作日志、登录日志、数据修改日志（筛选）
-- 统计看板：总用户、今日新增、待审核数、文物总数、近7天登录趋势
-- 集成对接点：提供统一 API 对接配置，不直接修改其他子系统数据库
+---
+
+## 2. 当前功能概览
+
+### 2.1 管理员与鉴权
+- 管理员 JWT 登录（`/api/admin/auth/login`）
+- `SUPER_ADMIN / DATA_ADMIN / CONTENT_REVIEWER` 角色菜单控制
+- 默认超管账号自动初始化：`admin / 123456`
+
+### 2.2 统一用户管理（主库在本系统）
+- 统一用户列表/详情/新增/修改/删除/批量删除
+- 条件筛选：用户名、来源（仅 `WEB/APP`）、状态、注册时间范围
+- 用户状态管理：启用/禁用（含批量）
+- 细粒度权限：评论/上传开关
+- 用户行为记录：按用户查询与新增
+- 权限变更审计：落库到 `unified_user_permission_audit`
+
+### 2.3 内容审核
+- 单条审核、批量审核（通过/拒绝/复审）
+- 拒绝与复审采用居中模态弹窗
+- 审核统计：日统计、审核员工作量排序与筛选
+- 敏感词库：增删改、级别调整、按词语/敏感程度筛选、操作日志
+- 自动审核策略：读取/保存、策略操作日志
+
+### 2.4 文物数据管理
+- 文物列表与保存
+- CSV 导入导出
+- 图谱同步状态字段维护
+
+### 2.5 知识图谱管理（通过子系统 API 代理）
+- 实体/关系/三元组在线编辑（新增/修改/删除）
+- 同步任务触发与查看
+- 通过 `integration` 的 `kg` 子系统路由对接，不直连对方数据库
+
+### 2.6 数据备份与恢复
+- 手动备份：全量 / 指定表（下拉选表，显示中文名）
+- 定时自动备份：可配置 `cron`、开关、保留天数
+- 备份文件加密存储（AES）
+- 备份记录列表、下载
+- 数据恢复（二次确认：`CONFIRM_RESTORE`）
+- 过期备份自动清理
+- 备份与恢复权限：**仅 `SUPER_ADMIN`**
+
+### 2.7 日志管理（审计增强）
+- 操作日志、系统日志、安全日志、登录日志、数据变更日志
+- 多维检索：时间范围、操作人、类型、关键字
+- CSV 导出（UTF-8 BOM，Excel 中文不乱码）
+- 登录失败记录已写入登录日志
+- 全局异常、备份任务执行写入系统日志
+
+### 2.8 系统监控看板
+- 实时指标：在线用户估算、今日新增用户、今日内容提交量、审核积压等
+- 访问趋势：日/周/月（折线图）
+- 数据增长：用户/内容/文物增长趋势（折线图）
+
+---
 
 ## 3. 数据库准备
 在 MySQL 中执行：
@@ -24,95 +72,103 @@
 CREATE DATABASE overseas_artifacts DEFAULT CHARACTER SET utf8mb4;
 ```
 
-## 4. 配置数据库连接
-编辑 `src/main/resources/application.yml`：
+> 使用 `spring.jpa.hibernate.ddl-auto=update`，首次启动会自动建表/补字段。
+
+---
+
+## 4. 关键配置（`application.yml`）
+
+### 4.1 数据库
+- `spring.datasource.url`
 - `spring.datasource.username`
 - `spring.datasource.password`
-- `spring.datasource.url`
 
-## 5. 启动项目
-```bash
-mvn spring-boot:run
-```
-
-## 6. 默认超级管理员
-启动时若不存在用户名为 `admin` 的账号，会自动创建：**用户名 `admin` / 密码 `123456`**，角色为超级管理员。该账号**不可删除、不可降级、不可禁用**（可在「管理员管理」中修改其密码）。
-
-## 7. 登录与访问受保护接口
-先调用登录接口获取 JWT：
-
-```http
-POST /api/admin/auth/login
-Content-Type: application/json
-
-{
-  "username": "admin",
-  "password": "123456"
-}
-```
-
-后续请求在 Header 中带上：
-
-```text
-Authorization: Bearer <token>
-```
-
-## 8. 主要接口
-- `GET /api/admin/users`：管理员列表（SUPER_ADMIN）
-- `POST /api/admin/users`：创建管理员（SUPER_ADMIN）
-- `PATCH /api/admin/users/{id}`：修改管理员角色、状态、新密码（SUPER_ADMIN，至少一项）
-- `DELETE /api/admin/users/{id}`：删除管理员（不可删 `admin`、不可删自己）
-- `PATCH /api/admin/users/{id}/status?status=ENABLED|DISABLED`：修改管理员状态
-- `GET /api/admin/platform-users`：前台用户列表
-- `POST /api/admin/platform-users`：创建前台用户
-- `PATCH /api/admin/platform-users/{id}/status?status=ENABLED|DISABLED`
-- `PATCH /api/admin/platform-users/{id}/permissions?commentAllowed=true&uploadAllowed=false`
-- `GET /api/admin/logs`：查看操作日志
-- `GET /api/admin/logs/login`：查看登录日志
-- `GET /api/admin/logs/data-change`：查看数据修改日志
-- `POST /api/admin/auth/login`：管理员登录
-- `GET /api/admin/auth/me`：当前登录管理员信息
-- `GET /api/admin/reviews?status=PENDING|APPROVED|REJECTED`：审核内容列表
-- `POST /api/admin/reviews`：新增待审核内容
-- `PATCH /api/admin/reviews/{id}/action`：审核动作（通过/拒绝）
-- `PATCH /api/admin/reviews/batch/action`：批量审核
-- `GET /api/admin/rbac/roles`：角色列表
-- `GET /api/admin/rbac/permissions`：权限列表
-- `POST /api/admin/rbac/admins/{adminId}/roles`：给管理员分配角色
-- `POST /api/admin/rbac/roles/{roleId}/permissions`：给角色分配权限
-- `GET /api/admin/artifacts`：文物列表
-- `POST /api/admin/artifacts`：新增文物
-- `PUT /api/admin/artifacts/{id}`：编辑文物
-- `GET /api/admin/artifacts/export`：导出文物 CSV
-- `POST /api/admin/artifacts/import`：导入文物 CSV（`multipart/form-data`，字段名 `file`）
-- `GET /api/admin/dashboard/overview`：统计看板
-- `GET /api/admin/integrations/endpoints`：子系统 API 说明与当前配置
-- `GET /api/admin/integrations/status`：当前集成模式与路径
-- `GET /api/admin/integrations/proxy/users`：代理拉取用户子系统用户列表
-- `GET /api/admin/integrations/proxy/artifacts`：代理拉取文物子系统数据
-- `POST /api/admin/integrations/proxy/review`：代理向用户子系统回传审核结果（JSON body）
-- `POST /api/admin/integrations/proxy/forward`：通用代理（`system`: user|artifact，`subPath`，`method`：GET|POST）
-
-## 9. 简易前端页面
-- 启动后访问：`http://localhost:8080/`
-- 页面支持：
-  - 登录页 + 后台模块化页面
-  - 角色权限管理页面
-  - 用户管理页面（含行为记录）
-  - 内容审核页面（含批量）
-  - 文物管理页面（CSV 文件上传导入、带 token 下载导出）
-  - 子系统 API 代理联调页（`integration.mode` 切换 mock/真实地址）
-  - 日志与统计页面
-
-在 `application.yml` 中配置子系统联调：
+### 4.2 子系统对接
 
 ```yaml
 integration:
-  mode: mock   # 或 real
+  mode: mock   # mock 或 real
   user-system-base-url: http://localhost:9001
   artifact-system-base-url: http://localhost:9002
+  kg-system-base-url: http://localhost:9003
   paths:
     users: /api/v1/users
     artifacts: /api/v1/artifacts
     review-callback: /api/v1/content/review-result
+    kg-entities: /api/v1/kg/entities
+    kg-relations: /api/v1/kg/relations
+    kg-triples: /api/v1/kg/triples
+    kg-sync-jobs: /api/v1/kg/sync/jobs
 ```
+
+### 4.3 备份配置
+
+```yaml
+backup:
+  directory: backups
+  aes-key-base64: <16/24/32字节key的Base64>
+```
+
+---
+
+## 5. 启动项目
+
+```bash
+mvn spring-boot:run
+```
+
+访问：
+- 前端：`http://localhost:8080/`
+
+---
+
+## 6. 常用 API（最新）
+
+### 6.1 统一用户
+- `GET /api/admin/unified-users`
+- `GET /api/admin/unified-users/{id}`
+- `POST /api/admin/unified-users`
+- `PUT /api/admin/unified-users/{id}`
+- `DELETE /api/admin/unified-users/{id}`
+- `DELETE /api/admin/unified-users/batch`
+- `PATCH /api/admin/unified-users/{id}/status`
+- `PATCH /api/admin/unified-users/batch/status`
+- `PATCH /api/admin/unified-users/{id}/permissions`
+- `GET /api/admin/unified-users/{id}/behaviors`
+- `POST /api/admin/unified-users/{id}/behaviors`
+
+### 6.2 备份恢复（仅 SUPER_ADMIN）
+- `GET /api/admin/backup/config`
+- `PUT /api/admin/backup/config`
+- `GET /api/admin/backup/tables`
+- `POST /api/admin/backup/manual`
+- `GET /api/admin/backup/records`
+- `GET /api/admin/backup/records/{id}/download`
+- `POST /api/admin/backup/restore/{id}`
+
+### 6.3 日志
+- `GET /api/admin/logs`（操作日志）
+- `GET /api/admin/logs/system`
+- `GET /api/admin/logs/security`
+- `GET /api/admin/logs/login`
+- `GET /api/admin/logs/data-change`
+- `GET /api/admin/logs/export/operation`
+- `GET /api/admin/logs/export/system`
+- `GET /api/admin/logs/export/security`
+
+### 6.4 监控看板
+- `GET /api/admin/dashboard/overview`
+
+### 6.5 子系统代理
+- `GET /api/admin/integrations/endpoints`
+- `GET /api/admin/integrations/status`
+- `POST /api/admin/integrations/proxy/forward`
+  - `system` 支持：`user | artifact | kg`
+  - `method` 支持：`GET | POST | PUT | PATCH | DELETE`
+
+---
+
+## 7. 说明与已知约束
+- 统一用户来源当前限制为：`WEB`、`APP`
+- 角色与权限后端能力可用；前端“角色权限管理”页面当前保留入口、内容待二次设计
+- 子系统未就绪时可用 `integration.mode=mock` 先演示流程
