@@ -1,16 +1,17 @@
 package com.buct.adminbackend.controller;
 
 import com.buct.adminbackend.common.ApiResponse;
-import com.buct.adminbackend.entity.LoginLog;
-import com.buct.adminbackend.entity.PlatformUser;
-import com.buct.adminbackend.entity.ReviewContent;
 import com.buct.adminbackend.entity.Artifact;
+import com.buct.adminbackend.entity.LoginLog;
+import com.buct.adminbackend.entity.ReviewContent;
+import com.buct.adminbackend.entity.User;
+import com.buct.adminbackend.enums.ReviewStatus;
 import com.buct.adminbackend.repository.ArtifactRepository;
 import com.buct.adminbackend.repository.LoginLogRepository;
-import com.buct.adminbackend.repository.PlatformUserRepository;
-import com.buct.adminbackend.enums.ReviewStatus;
 import com.buct.adminbackend.repository.ReviewContentRepository;
+import com.buct.adminbackend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import com.buct.adminbackend.security.PermissionCodes;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -27,23 +28,22 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class DashboardController {
 
-    private final PlatformUserRepository platformUserRepository;
+    private final UserRepository userRepository;
     private final ReviewContentRepository reviewContentRepository;
     private final ArtifactRepository artifactRepository;
     private final LoginLogRepository loginLogRepository;
 
     @GetMapping("/overview")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN','CONTENT_REVIEWER')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.STATS_VIEW + "')")
     public ApiResponse<Map<String, Object>> overview() {
         Map<String, Object> data = new HashMap<>();
-        long totalUsers = platformUserRepository.count();
+        long totalUsers = userRepository.count();
         long pendingReviews = reviewContentRepository.countByReviewStatus(ReviewStatus.PENDING);
         long recheckReviews = reviewContentRepository.countByReviewStatus(ReviewStatus.RECHECK);
         long totalArtifacts = artifactRepository.count();
 
-        long todayNewUsers = platformUserRepository.findAll().stream()
-                .filter(x -> x.getCreatedAt() != null && x.getCreatedAt().toLocalDate().equals(LocalDate.now()))
-                .count();
+        LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
+        long todayNewUsers = userRepository.countByRegisterTimeBetween(startOfDay, startOfDay.plusDays(1));
 
         data.put("totalUsers", totalUsers);
         data.put("todayNewUsers", todayNewUsers);
@@ -127,7 +127,7 @@ public class DashboardController {
 
     private Map<String, Object> buildGrowthTrend(int days) {
         LocalDate start = LocalDate.now().minusDays(days - 1L);
-        List<PlatformUser> users = platformUserRepository.findAll();
+        List<User> users = userRepository.findAll();
         List<ReviewContent> contents = reviewContentRepository.findAll();
         List<Artifact> artifacts = artifactRepository.findAll();
         List<String> labels = new ArrayList<>();
@@ -138,9 +138,9 @@ public class DashboardController {
         for (int i = 0; i < days; i++) {
             LocalDate d = start.plusDays(i);
             labels.add(d.toString());
-            u += users.stream().filter(x -> x.getCreatedAt() != null && x.getCreatedAt().toLocalDate().equals(d)).count();
+            u += users.stream().filter(x -> x.getRegisterTime() != null && x.getRegisterTime().toLocalDate().equals(d)).count();
             c += contents.stream().filter(x -> x.getSubmitTime() != null && x.getSubmitTime().toLocalDate().equals(d)).count();
-            a += artifacts.stream().filter(x -> x.getUpdatedAt() != null && x.getUpdatedAt().toLocalDate().equals(d)).count();
+            a += artifacts.stream().filter(x -> x.getCrawlDate() != null && x.getCrawlDate().equals(d)).count();
             userVals.add(u);
             contentVals.add(c);
             artifactVals.add(a);

@@ -11,18 +11,27 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "backup_task_config")
 public class BackupTaskConfig {
+
     @Id
     private Long id = 1L;
 
-    @Column(nullable = false)
+    @Column(name = "auto_enabled", nullable = false)
     private Boolean autoEnabled = true;
 
-    @Column(nullable = false, length = 64)
+    @Column(name = "cron_expression", nullable = false, length = 64)
     private String cronExpression = "0 0 2 * * *";
 
-    @Column(nullable = false)
+    @Column(name = "retention_days", nullable = false)
     private Integer retentionDays = 30;
 
+    @Column(name = "last_auto_run")
     private LocalDateTime lastAutoRun;
-}
 
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt = LocalDateTime.now();
+
+    @PreUpdate
+    public void onUpdate() {
+        this.updatedAt = LocalDateTime.now();
+    }
+}

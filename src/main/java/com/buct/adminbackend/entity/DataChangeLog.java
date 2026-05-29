@@ -16,21 +16,30 @@ public class DataChangeLog {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, length = 60)
+    @Column(name = "operator_id")
+    private Long operatorId;
+
+    @Column(name = "operator_name", nullable = false, length = 60)
     private String operator;
 
-    @Column(nullable = false, length = 50)
+    @Column(name = "change_type", nullable = false, length = 50)
     private String changeType;
 
-    @Column(nullable = false, length = 100)
+    @Column(name = "target_type", nullable = false, length = 100)
     private String targetType;
 
-    @Column(nullable = false, length = 100)
+    @Column(name = "target_id", nullable = false, length = 100)
     private String targetId;
+
+    @Column(name = "before_data", columnDefinition = "JSON")
+    private String beforeData;
+
+    @Column(name = "after_data", columnDefinition = "JSON")
+    private String afterData;
 
     @Column(length = 1000)
     private String detail;
 
-    @Column(nullable = false)
+    @Column(name = "change_time", nullable = false)
     private LocalDateTime changeTime = LocalDateTime.now();
 }

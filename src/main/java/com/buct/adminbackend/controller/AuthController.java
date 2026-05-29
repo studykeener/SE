@@ -2,6 +2,7 @@ package com.buct.adminbackend.controller;
 
 import com.buct.adminbackend.common.ApiResponse;
 import com.buct.adminbackend.dto.AdminUserResponse;
+import com.buct.adminbackend.dto.MeResponse;
 import com.buct.adminbackend.dto.LoginRequest;
 import com.buct.adminbackend.dto.LoginResponse;
 import com.buct.adminbackend.entity.AdminUser;
@@ -19,6 +20,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDateTime;
 
 @RestController
 @RequestMapping("/api/admin/auth")
@@ -39,34 +42,40 @@ public class AuthController {
                     new UsernamePasswordAuthenticationToken(request.username(), request.password())
             );
         } catch (BadCredentialsException e) {
-            auditLogService.logLogin(request.username(), "FAILED", httpRequest.getRemoteAddr());
+            auditLogService.logLogin(request.username(), "FAILED", httpRequest.getRemoteAddr(), "ADMIN", null);
             throw new IllegalArgumentException("用户名或密码错误");
         }
         UserDetails userDetails = userDetailsService.loadUserByUsername(request.username());
         String token = jwtService.generateToken(userDetails);
         AdminUser adminUser = adminUserRepository.findByUsername(request.username())
                 .orElseThrow(() -> new IllegalArgumentException("管理员不存在"));
+        adminUser.setLastLoginAt(LocalDateTime.now());
+        adminUser.setLastLoginIp(httpRequest.getRemoteAddr());
+        adminUserRepository.save(adminUser);
         LoginResponse response = new LoginResponse(
                 token,
                 toResponse(adminUser),
                 rolePermissionService.getPermissionCodesByAdminId(adminUser.getId())
         );
-        auditLogService.logLogin(request.username(), "SUCCESS", httpRequest.getRemoteAddr());
+        auditLogService.logLogin(request.username(), "SUCCESS", httpRequest.getRemoteAddr(), "ADMIN", adminUser.getId());
         return ApiResponse.ok("登录成功", response);
     }
 
     @GetMapping("/me")
-    public ApiResponse<AdminUserResponse> me(Authentication authentication) {
+    public ApiResponse<MeResponse> me(Authentication authentication) {
         AdminUser adminUser = adminUserRepository.findByUsername(authentication.getName())
                 .orElseThrow(() -> new IllegalArgumentException("管理员不存在"));
-        return ApiResponse.ok(toResponse(adminUser));
+        return ApiResponse.ok(new MeResponse(
+                toResponse(adminUser),
+                rolePermissionService.getPermissionCodesByAdminId(adminUser.getId())
+        ));
     }
 
     private AdminUserResponse toResponse(AdminUser adminUser) {
         return new AdminUserResponse(
                 adminUser.getId(),
                 adminUser.getUsername(),
-                adminUser.getRole(),
+                rolePermissionService.getRoleCodeByAdminId(adminUser.getId()),
                 adminUser.getStatus(),
                 adminUser.getCreatedAt()
         );

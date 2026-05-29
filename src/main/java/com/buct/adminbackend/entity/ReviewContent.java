@@ -19,42 +19,61 @@ public class ReviewContent {
     private Long id;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
+    @Column(name = "content_type", nullable = false, length = 20)
     private ContentType contentType;
 
-    @Column(nullable = false, length = 20)
+    @Column(name = "source_system", nullable = false, length = 20)
     private String sourceSystem;
 
-    @Column(nullable = false, length = 100)
+    @Column(name = "source_table", length = 50)
+    private String sourceTable;
+
+    @Column(name = "source_record_id")
+    private Long sourceRecordId;
+
+    @Column(name = "submitter_user_id")
+    private Long submitterUserId;
+
+    @Column(length = 100)
     private String submitter;
 
-    @Column(nullable = false, length = 2000)
+    @Column(name = "artifact_id", length = 64)
+    private String artifactId;
+
+    @Column(name = "content_text", nullable = false, length = 2000)
     private String contentText;
 
-    @Column(length = 500)
+    @Column(name = "content_url", length = 500)
     private String contentUrl;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
+    @Column(name = "review_status", nullable = false, length = 20)
     private ReviewStatus reviewStatus = ReviewStatus.PENDING;
 
-    @Column(nullable = false)
+    @Column(name = "risk_score", nullable = false)
     private Integer riskScore = 0;
 
-    @Column(nullable = false)
+    @Column(name = "submit_time", nullable = false)
     private LocalDateTime submitTime = LocalDateTime.now();
 
+    @Column(name = "review_time")
     private LocalDateTime reviewTime;
+
+    @Column(name = "reviewer_id")
+    private Long reviewerId;
 
     @Column(length = 50)
     private String reviewer;
 
-    @Column(length = 500)
+    @Column(name = "reject_reason", length = 500)
     private String rejectReason;
 
-    @Column(nullable = false)
+    @Column(name = "auto_reviewed", nullable = false)
     private Boolean autoReviewed = false;
 
-    @Column(length = 500)
+    @Column(name = "auto_decision_note", length = 500)
     private String autoDecisionNote;
+
+    @Column(name = "recheck_required", nullable = false)
+    private Boolean recheckRequired = false;
 }

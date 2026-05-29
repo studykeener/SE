@@ -15,6 +15,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.data.domain.Sort;
 import org.springframework.format.annotation.DateTimeFormat;
+import com.buct.adminbackend.security.PermissionCodes;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -46,16 +47,20 @@ public class LogController {
     private final SystemLogRepository systemLogRepository;
 
     private static final Set<String> SECURITY_OPERATION_TYPES = Set.of(
+            "UPDATE_USER_PERMISSION",
             "UPDATE_PLATFORM_USER_PERMISSION",
             "UPDATE_UNIFIED_USER_PERMISSION",
             "UPDATE_ADMIN",
             "UPDATE_ADMIN_STATUS",
             "CREATE_ADMIN",
-            "DELETE_ADMIN"
+            "DELETE_ADMIN",
+            "CREATE_ROLE",
+            "ASSIGN_ROLE_PERMISSION",
+            "ASSIGN_ADMIN_ROLE"
     );
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN','CONTENT_REVIEWER')")
+    @PreAuthorize("hasAnyAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.LOG_VIEW + "','" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.REVIEW_VIEW + "')")
     public ApiResponse<List<OperationLog>> list(
             Authentication authentication,
             @RequestParam(required = false) String operator,
@@ -63,7 +68,7 @@ public class LogController {
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to) {
-        if (isSuperOrDataAdmin(authentication)) {
+        if (hasLogViewAll(authentication)) {
             return ApiResponse.ok(filterOperationLogs(
                     operationLogRepository.findAll(Sort.by(Sort.Direction.DESC, "operationTime")),
                     operator, operationType, keyword, from, to));
@@ -75,7 +80,7 @@ public class LogController {
     }
 
     @GetMapping("/system")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.LOG_VIEW + "')")
     public ApiResponse<List<SystemLog>> systemLogs(
             @RequestParam(required = false) String level,
             @RequestParam(required = false) String eventType,
@@ -94,7 +99,7 @@ public class LogController {
     }
 
     @GetMapping("/security")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.LOG_VIEW + "')")
     public ApiResponse<List<Map<String, Object>>> securityLogs(
             @RequestParam(required = false) String operator,
             @RequestParam(required = false) String keyword,
@@ -136,7 +141,7 @@ public class LogController {
     }
 
     @GetMapping("/login")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.LOG_VIEW + "')")
     public ApiResponse<List<LoginLog>> loginLogs(
             @RequestParam(required = false) String username,
             @RequestParam(required = false) String result,
@@ -155,7 +160,7 @@ public class LogController {
     }
 
     @GetMapping("/data-change")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.LOG_VIEW + "')")
     public ApiResponse<List<DataChangeLog>> dataChangeLogs(
             @RequestParam(required = false) String operator,
             @RequestParam(required = false) String changeType,
@@ -174,7 +179,7 @@ public class LogController {
     }
 
     @GetMapping("/export/operation")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN','CONTENT_REVIEWER')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.LOG_VIEW + "')")
     public ResponseEntity<byte[]> exportOperation(
             Authentication authentication,
             @RequestParam(required = false) String operator,
@@ -191,7 +196,7 @@ public class LogController {
     }
 
     @GetMapping("/export/system")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.LOG_VIEW + "')")
     public ResponseEntity<byte[]> exportSystem(
             @RequestParam(required = false) String level,
             @RequestParam(required = false) String eventType,
@@ -207,7 +212,7 @@ public class LogController {
     }
 
     @GetMapping("/export/security")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.LOG_VIEW + "')")
     public ResponseEntity<byte[]> exportSecurity(
             @RequestParam(required = false) String operator,
             @RequestParam(required = false) String keyword,
@@ -280,8 +285,8 @@ public class LogController {
                 .body(payload);
     }
 
-    private static boolean isSuperOrDataAdmin(Authentication authentication) {
+    private static boolean hasLogViewAll(Authentication authentication) {
         return authentication.getAuthorities().stream()
-                .anyMatch(a -> "ROLE_SUPER_ADMIN".equals(a.getAuthority()) || "ROLE_DATA_ADMIN".equals(a.getAuthority()));
+                .anyMatch(a -> PermissionCodes.authority(PermissionCodes.LOG_VIEW).equals(a.getAuthority()));
     }
 }

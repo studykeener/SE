@@ -5,8 +5,11 @@ import com.buct.adminbackend.dto.CreateBackupRequest;
 import com.buct.adminbackend.dto.UpdateBackupTaskConfigRequest;
 import com.buct.adminbackend.entity.BackupRecord;
 import com.buct.adminbackend.entity.BackupTaskConfig;
+import com.buct.adminbackend.entity.RestoreLog;
+import com.buct.adminbackend.repository.AdminUserRepository;
 import com.buct.adminbackend.repository.BackupRecordRepository;
 import com.buct.adminbackend.repository.BackupTaskConfigRepository;
+import com.buct.adminbackend.repository.RestoreLogRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -30,11 +33,13 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class BackupService {
-    private static final Set<String> INTERNAL_EXCLUDED_TABLES = Set.of("backup_records", "backup_task_config");
+    private static final Set<String> INTERNAL_EXCLUDED_TABLES = Set.of("backup_records", "backup_task_config", "restore_logs");
 
     private final BackupProperties backupProperties;
     private final BackupRecordRepository backupRecordRepository;
     private final BackupTaskConfigRepository backupTaskConfigRepository;
+    private final RestoreLogRepository restoreLogRepository;
+    private final AdminUserRepository adminUserRepository;
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
     private final SystemLogService systemLogService;
@@ -87,6 +92,8 @@ public class BackupService {
         Path file = dir.resolve(fileName);
 
         BackupRecord rec = new BackupRecord();
+        Long operatorId = resolveOperatorId(operator);
+        rec.setOperatorId(operatorId);
         rec.setOperator(StringUtils.hasText(operator) ? operator : "system");
         rec.setBackupType(type);
         rec.setTableScope(String.join(",", tables));
@@ -139,6 +146,15 @@ public class BackupService {
             throw new IllegalArgumentException("恢复确认文本错误，请输入 CONFIRM_RESTORE");
         }
         BackupRecord r = getRecord(id);
+        RestoreLog restoreLog = new RestoreLog();
+        restoreLog.setBackupRecordId(id);
+        restoreLog.setOperatorId(resolveOperatorId(operator));
+        restoreLog.setConfirmText(confirmText);
+        restoreLog.setConfirmedAt(LocalDateTime.now());
+        restoreLog.setRestoreScope(r.getBackupType());
+        restoreLog.setTableScope(r.getTableScope());
+        restoreLog.setStatus("RUNNING");
+        restoreLog = restoreLogRepository.save(restoreLog);
         try {
             byte[] raw = Files.readAllBytes(Paths.get(r.getFilePath()));
             byte[] plain = decrypt(raw);
@@ -163,9 +179,24 @@ public class BackupService {
             } finally {
                 jdbcTemplate.execute("SET FOREIGN_KEY_CHECKS=1");
             }
+            restoreLog.setStatus("SUCCESS");
+            restoreLog.setFinishedAt(LocalDateTime.now());
+            restoreLogRepository.save(restoreLog);
+            systemLogService.info("RESTORE", "BackupService", "restoreId=" + restoreLog.getId() + ", backupId=" + id);
         } catch (Exception e) {
+            restoreLog.setStatus("FAILED");
+            restoreLog.setErrorMessage(e.getMessage());
+            restoreLog.setFinishedAt(LocalDateTime.now());
+            restoreLogRepository.save(restoreLog);
             throw new IllegalStateException("恢复失败: " + e.getMessage(), e);
         }
+    }
+
+    private Long resolveOperatorId(String operatorUsername) {
+        if (!StringUtils.hasText(operatorUsername) || "system".equals(operatorUsername) || "system-auto".equals(operatorUsername)) {
+            return 0L;
+        }
+        return adminUserRepository.findByUsername(operatorUsername).map(a -> a.getId()).orElse(0L);
     }
 
     @Scheduled(cron = "0 * * * * *")

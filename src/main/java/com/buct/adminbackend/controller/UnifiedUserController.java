@@ -2,13 +2,15 @@ package com.buct.adminbackend.controller;
 
 import com.buct.adminbackend.common.ApiResponse;
 import com.buct.adminbackend.dto.*;
-import com.buct.adminbackend.entity.UnifiedUser;
-import com.buct.adminbackend.entity.UnifiedUserBehavior;
-import com.buct.adminbackend.entity.UnifiedUserPermissionAudit;
+import com.buct.adminbackend.entity.AdminUser;
+import com.buct.adminbackend.entity.User;
+import com.buct.adminbackend.entity.UserBehavior;
+import com.buct.adminbackend.entity.UserPermissionAudit;
 import com.buct.adminbackend.enums.UserStatus;
-import com.buct.adminbackend.repository.UnifiedUserBehaviorRepository;
-import com.buct.adminbackend.repository.UnifiedUserPermissionAuditRepository;
-import com.buct.adminbackend.repository.UnifiedUserRepository;
+import com.buct.adminbackend.repository.UserBehaviorRepository;
+import com.buct.adminbackend.repository.UserPermissionAuditRepository;
+import com.buct.adminbackend.repository.UserRepository;
+import com.buct.adminbackend.repository.AdminUserRepository;
 import com.buct.adminbackend.service.AuditLogService;
 import com.buct.adminbackend.service.OperationLogService;
 import jakarta.persistence.criteria.Predicate;
@@ -19,8 +21,10 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.format.annotation.DateTimeFormat;
+import com.buct.adminbackend.security.PermissionCodes;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
@@ -34,15 +38,19 @@ import java.util.List;
 @RequiredArgsConstructor
 public class UnifiedUserController {
 
-    private final UnifiedUserRepository unifiedUserRepository;
-    private final UnifiedUserBehaviorRepository unifiedUserBehaviorRepository;
-    private final UnifiedUserPermissionAuditRepository unifiedUserPermissionAuditRepository;
+    private static final String DEFAULT_USER_PASSWORD = "ChangeMe123";
+
+    private final UserRepository userRepository;
+    private final UserBehaviorRepository userBehaviorRepository;
+    private final UserPermissionAuditRepository userPermissionAuditRepository;
+    private final AdminUserRepository adminUserRepository;
     private final OperationLogService operationLogService;
     private final AuditLogService auditLogService;
+    private final PasswordEncoder passwordEncoder;
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN','CONTENT_REVIEWER')")
-    public ApiResponse<Page<UnifiedUser>> list(
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.USER_VIEW + "')")
+    public ApiResponse<Page<PlatformUserResponse>> list(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String username,
@@ -50,204 +58,283 @@ public class UnifiedUserController {
             @RequestParam(required = false) UserStatus status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime createdFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime createdTo) {
-        Specification<UnifiedUser> spec = buildUserFilterSpec(username, sourceSystem, status, createdFrom, createdTo);
-        Page<UnifiedUser> p = unifiedUserRepository.findAll(spec,
-                PageRequest.of(page, Math.min(Math.max(size, 1), 200), Sort.by(Sort.Direction.DESC, "createdAt")));
-        return ApiResponse.ok(p);
+        Specification<User> spec = buildUserFilterSpec(username, sourceSystem, status, createdFrom, createdTo);
+        Page<User> p = userRepository.findAll(spec,
+                PageRequest.of(page, Math.min(Math.max(size, 1), 200), Sort.by(Sort.Direction.DESC, "registerTime")));
+        return ApiResponse.ok(p.map(PlatformUserResponse::from));
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN','CONTENT_REVIEWER')")
-    public ApiResponse<UnifiedUser> detail(@PathVariable Long id) {
-        UnifiedUser user = unifiedUserRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("统一用户不存在"));
-        return ApiResponse.ok(user);
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.USER_VIEW + "')")
+    public ApiResponse<PlatformUserResponse> detail(@PathVariable Long id) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("用户不存在"));
+        return ApiResponse.ok(PlatformUserResponse.from(user));
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN')")
-    public ApiResponse<UnifiedUser> create(@Valid @RequestBody CreateUnifiedUserRequest request, Authentication authentication) {
-        String sourceSystem = normalizeText(request.sourceSystem());
-        validateSourceSystem(sourceSystem);
-        String sourceUserId = normalizeText(request.sourceUserId());
-        if (unifiedUserRepository.existsBySourceSystemAndSourceUserId(sourceSystem, sourceUserId)) {
-            throw new IllegalArgumentException("来源系统用户映射已存在");
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.USER_EDIT + "')")
+    public ApiResponse<PlatformUserResponse> create(@Valid @RequestBody CreateUnifiedUserRequest request, Authentication authentication) {
+        String userSource = normalizeUserSource(request.sourceSystem());
+        String username = normalizeText(request.username());
+        if (userRepository.existsByUsername(username)) {
+            throw new IllegalArgumentException("用户名已存在");
         }
-        UnifiedUser user = new UnifiedUser();
-        user.setUsername(normalizeText(request.username()));
-        user.setDisplayName(normalizeNullable(request.displayName()));
+        validateUniqueEmailPhone(request.email(), request.phone(), null);
+        User user = new User();
+        user.setUsername(username);
+        user.setNickname(normalizeNullable(request.displayName()));
         user.setEmail(normalizeNullable(request.email()));
         user.setPhone(normalizeNullable(request.phone()));
-        user.setSourceSystem(sourceSystem);
-        user.setSourceUserId(sourceUserId);
+        user.setAvatarUrl(normalizeNullable(request.avatarUrl()));
+        user.setSex(normalizeSex(request.sex()));
+        user.setUserSource(userSource);
+        String rawPassword = StringUtils.hasText(request.password()) ? request.password().trim() : DEFAULT_USER_PASSWORD;
+        user.setPassword(passwordEncoder.encode(rawPassword));
         user.setStatus(UserStatus.ENABLED);
-        UnifiedUser saved = unifiedUserRepository.save(user);
-        operationLogService.log(authentication.getName(), "CREATE_UNIFIED_USER", String.valueOf(saved.getId()), "创建统一用户");
-        auditLogService.logDataChange(authentication.getName(), "CREATE", "UNIFIED_USER", String.valueOf(saved.getId()), saved.getUsername());
-        return ApiResponse.ok("创建成功", saved);
+        user.setCanComment(true);
+        user.setCanUpload(true);
+        User saved = userRepository.save(user);
+        operationLogService.log(authentication.getName(), "CREATE_USER", String.valueOf(saved.getId()), "创建前台用户");
+        auditLogService.logDataChange(authentication.getName(), "CREATE", "USER", String.valueOf(saved.getId()), saved.getUsername());
+        return ApiResponse.ok("创建成功", PlatformUserResponse.from(saved));
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN')")
-    public ApiResponse<UnifiedUser> update(
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.USER_EDIT + "')")
+    public ApiResponse<PlatformUserResponse> update(
             @PathVariable Long id,
             @Valid @RequestBody UpdateUnifiedUserRequest request,
             Authentication authentication) {
-        UnifiedUser user = unifiedUserRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("统一用户不存在"));
-        String sourceSystem = normalizeText(request.sourceSystem());
-        validateSourceSystem(sourceSystem);
-        String sourceUserId = normalizeText(request.sourceUserId());
-        if (unifiedUserRepository.existsBySourceSystemAndSourceUserIdAndIdNot(sourceSystem, sourceUserId, id)) {
-            throw new IllegalArgumentException("来源系统用户映射已存在");
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("用户不存在"));
+        String userSource = normalizeUserSource(request.sourceSystem());
+        String username = normalizeText(request.username());
+        if (userRepository.existsByUsernameAndIdNot(username, id)) {
+            throw new IllegalArgumentException("用户名已存在");
         }
-        user.setUsername(normalizeText(request.username()));
-        user.setDisplayName(normalizeNullable(request.displayName()));
+        validateUniqueEmailPhone(request.email(), request.phone(), id);
+        UserStatus oldStatus = user.getStatus();
+        Boolean oldComment = user.getCanComment();
+        Boolean oldUpload = user.getCanUpload();
+
+        user.setUsername(username);
+        user.setNickname(normalizeNullable(request.displayName()));
         user.setEmail(normalizeNullable(request.email()));
         user.setPhone(normalizeNullable(request.phone()));
-        user.setSourceSystem(sourceSystem);
-        user.setSourceUserId(sourceUserId);
+        user.setAvatarUrl(normalizeNullable(request.avatarUrl()));
+        user.setSex(normalizeSex(request.sex()));
+        user.setUserSource(userSource);
         user.setStatus(request.status());
-        user.setCommentAllowed(request.commentAllowed());
-        user.setUploadAllowed(request.uploadAllowed());
-        UnifiedUser saved = unifiedUserRepository.save(user);
-        operationLogService.log(authentication.getName(), "UPDATE_UNIFIED_USER", String.valueOf(saved.getId()), "更新统一用户");
-        auditLogService.logDataChange(authentication.getName(), "UPDATE", "UNIFIED_USER", String.valueOf(id), "full update");
-        return ApiResponse.ok("更新成功", saved);
+        user.setCanComment(request.commentAllowed());
+        user.setCanUpload(request.uploadAllowed());
+        applyDisabledMeta(user, request.status(), normalizeNullable(request.disabledReason()), authentication);
+
+        User saved = userRepository.save(user);
+        if (!oldStatus.equals(saved.getStatus()) || !oldComment.equals(saved.getCanComment()) || !oldUpload.equals(saved.getCanUpload())) {
+            savePermissionAudit(saved, authentication, oldStatus, saved.getStatus(),
+                    oldComment, saved.getCanComment(), oldUpload, saved.getCanUpload(),
+                    normalizeNullable(request.disabledReason()));
+        }
+        operationLogService.log(authentication.getName(), "UPDATE_USER", String.valueOf(saved.getId()), "更新前台用户");
+        auditLogService.logDataChange(authentication.getName(), "UPDATE", "USER", String.valueOf(id), "full update");
+        return ApiResponse.ok("更新成功", PlatformUserResponse.from(saved));
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.USER_DELETE + "')")
     @Transactional
     public ApiResponse<Void> delete(@PathVariable Long id, Authentication authentication) {
-        UnifiedUser user = unifiedUserRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("统一用户不存在"));
-        unifiedUserBehaviorRepository.deleteByUserId(id);
-        unifiedUserRepository.deleteById(id);
-        operationLogService.log(authentication.getName(), "DELETE_UNIFIED_USER", String.valueOf(id), "删除统一用户");
-        auditLogService.logDataChange(authentication.getName(), "DELETE", "UNIFIED_USER", String.valueOf(id), user.getUsername());
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("用户不存在"));
+        userBehaviorRepository.deleteByUserId(id);
+        userRepository.deleteById(id);
+        operationLogService.log(authentication.getName(), "DELETE_USER", String.valueOf(id), "删除前台用户");
+        auditLogService.logDataChange(authentication.getName(), "DELETE", "USER", String.valueOf(id), user.getUsername());
         return ApiResponse.ok("删除成功", null);
     }
 
     @DeleteMapping("/batch")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.USER_DELETE + "')")
     @Transactional
     public ApiResponse<Void> deleteBatch(@Valid @RequestBody BatchUserIdsRequest request, Authentication authentication) {
         for (Long id : request.ids()) {
-            unifiedUserRepository.findById(id).ifPresent(u -> {
-                unifiedUserBehaviorRepository.deleteByUserId(id);
-                unifiedUserRepository.deleteById(id);
+            userRepository.findById(id).ifPresent(u -> {
+                userBehaviorRepository.deleteByUserId(id);
+                userRepository.deleteById(id);
             });
         }
-        auditLogService.logDataChange(authentication.getName(), "BATCH_DELETE", "UNIFIED_USER", request.ids().toString(), "batch");
+        auditLogService.logDataChange(authentication.getName(), "BATCH_DELETE", "USER", request.ids().toString(), "batch");
         return ApiResponse.ok("批量删除成功", null);
     }
 
     @PatchMapping("/{id}/status")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN')")
-    public ApiResponse<UnifiedUser> updateStatus(@PathVariable Long id, @RequestParam UserStatus status, Authentication authentication) {
-        UnifiedUser user = unifiedUserRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("统一用户不存在"));
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.USER_BAN + "')")
+    public ApiResponse<PlatformUserResponse> updateStatus(@PathVariable Long id,
+                                          @RequestParam UserStatus status,
+                                          @RequestParam(required = false) String reason,
+                                          Authentication authentication) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("用户不存在"));
         UserStatus old = user.getStatus();
         user.setStatus(status);
-        UnifiedUser saved = unifiedUserRepository.save(user);
-        savePermissionAudit(saved.getId(), authentication.getName(), old, status, saved.getCommentAllowed(), saved.getCommentAllowed(), saved.getUploadAllowed(), saved.getUploadAllowed(), "状态更新");
-        operationLogService.log(authentication.getName(), "UPDATE_UNIFIED_USER_STATUS", String.valueOf(saved.getId()), "status=" + status);
-        auditLogService.logDataChange(authentication.getName(), "UPDATE", "UNIFIED_USER", String.valueOf(saved.getId()), "status=" + status);
-        return ApiResponse.ok("状态更新成功", saved);
+        applyDisabledMeta(user, status, normalizeNullable(reason), authentication);
+        User saved = userRepository.save(user);
+        savePermissionAudit(saved, authentication, old, status, saved.getCanComment(), saved.getCanComment(),
+                saved.getCanUpload(), saved.getCanUpload(), normalizeNullable(reason));
+        operationLogService.log(authentication.getName(), "UPDATE_USER_STATUS", String.valueOf(saved.getId()), "status=" + status);
+        auditLogService.logDataChange(authentication.getName(), "UPDATE", "USER", String.valueOf(saved.getId()), "status=" + status);
+        return ApiResponse.ok("状态更新成功", PlatformUserResponse.from(saved));
     }
 
     @PatchMapping("/batch/status")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.USER_BAN + "')")
     public ApiResponse<Void> batchStatus(@RequestParam List<Long> ids,
                                          @RequestParam UserStatus status,
+                                         @RequestParam(required = false) String reason,
                                          Authentication authentication) {
         for (Long id : ids) {
-            unifiedUserRepository.findById(id).ifPresent(user -> {
+            userRepository.findById(id).ifPresent(user -> {
                 UserStatus old = user.getStatus();
                 user.setStatus(status);
-                UnifiedUser saved = unifiedUserRepository.save(user);
-                savePermissionAudit(saved.getId(), authentication.getName(), old, status, saved.getCommentAllowed(), saved.getCommentAllowed(), saved.getUploadAllowed(), saved.getUploadAllowed(), "批量状态更新");
+                applyDisabledMeta(user, status, normalizeNullable(reason), authentication);
+                User saved = userRepository.save(user);
+                savePermissionAudit(saved, authentication, old, status, saved.getCanComment(), saved.getCanComment(),
+                        saved.getCanUpload(), saved.getCanUpload(), normalizeNullable(reason));
             });
         }
-        auditLogService.logDataChange(authentication.getName(), "BATCH_UPDATE", "UNIFIED_USER", ids.toString(), "status=" + status);
+        auditLogService.logDataChange(authentication.getName(), "BATCH_UPDATE", "USER", ids.toString(), "status=" + status);
         return ApiResponse.ok("批量更新成功", null);
     }
 
     @PatchMapping("/{id}/permissions")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN','CONTENT_REVIEWER')")
-    public ApiResponse<UnifiedUser> updatePermissions(@PathVariable Long id,
-                                                      @Valid @RequestBody UpdateUnifiedUserPermissionsRequest request,
-                                                      Authentication authentication) {
-        UnifiedUser user = unifiedUserRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("统一用户不存在"));
-        Boolean oldComment = user.getCommentAllowed();
-        Boolean oldUpload = user.getUploadAllowed();
-        user.setCommentAllowed(request.commentAllowed());
-        user.setUploadAllowed(request.uploadAllowed());
-        UnifiedUser saved = unifiedUserRepository.save(user);
-        savePermissionAudit(saved.getId(), authentication.getName(), saved.getStatus(), saved.getStatus(), oldComment, saved.getCommentAllowed(), oldUpload, saved.getUploadAllowed(), normalizeNullable(request.reason()));
-        operationLogService.log(authentication.getName(), "UPDATE_UNIFIED_USER_PERMISSION", String.valueOf(saved.getId()),
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.USER_BAN + "')")
+    public ApiResponse<PlatformUserResponse> updatePermissions(@PathVariable Long id,
+                                               @Valid @RequestBody UpdateUnifiedUserPermissionsRequest request,
+                                               Authentication authentication) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("用户不存在"));
+        Boolean oldComment = user.getCanComment();
+        Boolean oldUpload = user.getCanUpload();
+        user.setCanComment(request.commentAllowed());
+        user.setCanUpload(request.uploadAllowed());
+        User saved = userRepository.save(user);
+        savePermissionAudit(saved, authentication, saved.getStatus(), saved.getStatus(),
+                oldComment, saved.getCanComment(), oldUpload, saved.getCanUpload(), normalizeNullable(request.reason()));
+        operationLogService.log(authentication.getName(), "UPDATE_USER_PERMISSION", String.valueOf(saved.getId()),
                 "commentAllowed=" + request.commentAllowed() + ", uploadAllowed=" + request.uploadAllowed());
-        auditLogService.logDataChange(authentication.getName(), "UPDATE", "UNIFIED_USER", String.valueOf(saved.getId()),
+        auditLogService.logDataChange(authentication.getName(), "UPDATE", "USER", String.valueOf(saved.getId()),
                 "commentAllowed=" + request.commentAllowed() + ", uploadAllowed=" + request.uploadAllowed());
-        return ApiResponse.ok("权限更新成功", saved);
+        return ApiResponse.ok("权限更新成功", PlatformUserResponse.from(saved));
     }
 
     @GetMapping("/{id}/behaviors")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN','CONTENT_REVIEWER')")
-    public ApiResponse<Page<UnifiedUserBehavior>> behaviors(
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.USER_VIEW + "')")
+    public ApiResponse<Page<UserBehavior>> behaviors(
             @PathVariable Long id,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String type,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to) {
-        unifiedUserRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("统一用户不存在"));
-        Specification<UnifiedUserBehavior> spec = buildBehaviorFilterSpec(id, type, from, to);
-        Page<UnifiedUserBehavior> p = unifiedUserBehaviorRepository.findAll(spec,
+        userRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("用户不存在"));
+        Specification<UserBehavior> spec = buildBehaviorFilterSpec(id, type, from, to);
+        Page<UserBehavior> p = userBehaviorRepository.findAll(spec,
                 PageRequest.of(page, Math.min(Math.max(size, 1), 200), Sort.by(Sort.Direction.DESC, "behaviorTime")));
         return ApiResponse.ok(p);
     }
 
     @PostMapping("/{id}/behaviors")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN','CONTENT_REVIEWER')")
-    public ApiResponse<UnifiedUserBehavior> createBehavior(@PathVariable Long id,
-                                                           @Valid @RequestBody CreateUnifiedUserBehaviorRequest request,
-                                                           Authentication authentication) {
-        unifiedUserRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("统一用户不存在"));
-        UnifiedUserBehavior b = new UnifiedUserBehavior();
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.USER_VIEW + "')")
+    public ApiResponse<UserBehavior> createBehavior(@PathVariable Long id,
+                                                    @Valid @RequestBody CreateUnifiedUserBehaviorRequest request,
+                                                    Authentication authentication) {
+        userRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("用户不存在"));
+        UserBehavior b = new UserBehavior();
         b.setUserId(id);
-        b.setBehaviorType(normalizeText(request.behaviorType()));
+        b.setBehaviorType(normalizeText(request.behaviorType()).toUpperCase());
         b.setBehaviorContent(normalizeNullable(request.behaviorContent()));
-        b.setSourceSystem(normalizeText(request.sourceSystem()));
+        b.setSourceSystem(normalizeUserSource(request.sourceSystem()));
         b.setSourceRecordId(normalizeNullable(request.sourceRecordId()));
         b.setBehaviorTime(request.behaviorTime() == null ? LocalDateTime.now() : request.behaviorTime());
-        UnifiedUserBehavior saved = unifiedUserBehaviorRepository.save(b);
-        operationLogService.log(authentication.getName(), "CREATE_UNIFIED_USER_BEHAVIOR", String.valueOf(saved.getId()), "userId=" + id);
-        auditLogService.logDataChange(authentication.getName(), "CREATE", "UNIFIED_USER_BEHAVIOR", String.valueOf(saved.getId()), "userId=" + id);
+        UserBehavior saved = userBehaviorRepository.save(b);
+        operationLogService.log(authentication.getName(), "CREATE_USER_BEHAVIOR", String.valueOf(saved.getId()), "userId=" + id);
+        auditLogService.logDataChange(authentication.getName(), "CREATE", "USER_BEHAVIOR", String.valueOf(saved.getId()), "userId=" + id);
         return ApiResponse.ok("创建成功", saved);
     }
 
-    private void savePermissionAudit(Long userId, String operator,
-                                     UserStatus oldStatus, UserStatus newStatus,
-                                     Boolean oldCommentAllowed, Boolean newCommentAllowed,
-                                     Boolean oldUploadAllowed, Boolean newUploadAllowed,
-                                     String reason) {
-        UnifiedUserPermissionAudit a = new UnifiedUserPermissionAudit();
-        a.setUserId(userId);
-        a.setOperator(operator);
-        a.setOldStatus(oldStatus);
-        a.setNewStatus(newStatus);
-        a.setOldCommentAllowed(oldCommentAllowed);
-        a.setNewCommentAllowed(newCommentAllowed);
-        a.setOldUploadAllowed(oldUploadAllowed);
-        a.setNewUploadAllowed(newUploadAllowed);
-        a.setReason(normalizeNullable(reason));
-        unifiedUserPermissionAuditRepository.save(a);
+    @GetMapping("/{id}/permission-audit")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.USER_VIEW + "')")
+    public ApiResponse<List<UserPermissionAudit>> permissionAudit(@PathVariable Long id) {
+        userRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("用户不存在"));
+        return ApiResponse.ok(userPermissionAuditRepository.findByUserIdOrderByOperatedAtDesc(id));
     }
 
-    private static Specification<UnifiedUser> buildUserFilterSpec(
+    private void applyDisabledMeta(User user, UserStatus status, String reason, Authentication authentication) {
+        if (status == UserStatus.DISABLED) {
+            if (user.getDisabledAt() == null) {
+                user.setDisabledAt(LocalDateTime.now());
+            }
+            user.setDisabledBy(resolveOperatorId(authentication));
+            user.setDisabledReason(StringUtils.hasText(reason) ? reason.trim() : "管理员禁用");
+        } else {
+            user.setDisabledAt(null);
+            user.setDisabledBy(null);
+            user.setDisabledReason(null);
+        }
+    }
+
+    private void validateUniqueEmailPhone(String email, String phone, Long excludeId) {
+        String e = normalizeNullable(email);
+        String p = normalizeNullable(phone);
+        if (e != null) {
+            boolean exists = excludeId == null
+                    ? userRepository.existsByEmail(e)
+                    : userRepository.existsByEmailAndIdNot(e, excludeId);
+            if (exists) {
+                throw new IllegalArgumentException("邮箱已被使用");
+            }
+        }
+        if (p != null) {
+            boolean exists = excludeId == null
+                    ? userRepository.existsByPhone(p)
+                    : userRepository.existsByPhoneAndIdNot(p, excludeId);
+            if (exists) {
+                throw new IllegalArgumentException("手机号已被使用");
+            }
+        }
+    }
+
+    private void savePermissionAudit(User user, Authentication authentication,
+                                     UserStatus oldStatus, UserStatus newStatus,
+                                     Boolean oldComment, Boolean newComment,
+                                     Boolean oldUpload, Boolean newUpload,
+                                     String reason) {
+        UserPermissionAudit a = new UserPermissionAudit();
+        a.setUserId(user.getId());
+        Long operatorId = resolveOperatorId(authentication);
+        a.setOperatorId(operatorId == null ? 0L : operatorId);
+        a.setOperatorName(authentication.getName());
+        a.setOldStatus(statusCode(oldStatus));
+        a.setNewStatus(statusCode(newStatus));
+        a.setOldCanComment(oldComment);
+        a.setNewCanComment(newComment);
+        a.setOldCanUpload(oldUpload);
+        a.setNewCanUpload(newUpload);
+        a.setReason(normalizeNullable(reason));
+        userPermissionAuditRepository.save(a);
+    }
+
+    private Long resolveOperatorId(Authentication authentication) {
+        return adminUserRepository.findByUsername(authentication.getName()).map(AdminUser::getId).orElse(null);
+    }
+
+    private static Integer statusCode(UserStatus status) {
+        if (status == null) return null;
+        return status == UserStatus.ENABLED ? 1 : 0;
+    }
+
+    private static Specification<User> buildUserFilterSpec(
             String username,
             String sourceSystem,
             UserStatus status,
@@ -259,23 +346,23 @@ public class UnifiedUserController {
                 preds.add(cb.like(cb.lower(root.get("username")), "%" + username.trim().toLowerCase() + "%"));
             }
             if (StringUtils.hasText(sourceSystem)) {
-                preds.add(cb.equal(cb.upper(root.get("sourceSystem")), sourceSystem.trim().toUpperCase()));
+                preds.add(cb.equal(cb.lower(root.get("userSource")), normalizeUserSource(sourceSystem)));
             }
             if (status != null) {
                 preds.add(cb.equal(root.get("status"), status));
             }
             if (createdFrom != null) {
-                preds.add(cb.greaterThanOrEqualTo(root.get("createdAt"), createdFrom));
+                preds.add(cb.greaterThanOrEqualTo(root.get("registerTime"), createdFrom));
             }
             if (createdTo != null) {
-                preds.add(cb.lessThanOrEqualTo(root.get("createdAt"), createdTo));
+                preds.add(cb.lessThanOrEqualTo(root.get("registerTime"), createdTo));
             }
             if (preds.isEmpty()) return cb.conjunction();
             return cb.and(preds.toArray(new Predicate[0]));
         };
     }
 
-    private static Specification<UnifiedUserBehavior> buildBehaviorFilterSpec(
+    private static Specification<UserBehavior> buildBehaviorFilterSpec(
             Long userId,
             String type,
             LocalDateTime from,
@@ -305,14 +392,24 @@ public class UnifiedUserController {
         return s.trim();
     }
 
-    private static void validateSourceSystem(String sourceSystem) {
+    private static String normalizeUserSource(String sourceSystem) {
         if (!StringUtils.hasText(sourceSystem)) {
-            throw new IllegalArgumentException("sourceSystem 不能为空");
+            throw new IllegalArgumentException("用户来源不能为空");
         }
-        String v = sourceSystem.trim().toUpperCase();
-        if (!"WEB".equals(v) && !"APP".equals(v)) {
-            throw new IllegalArgumentException("sourceSystem 仅支持 WEB 或 APP");
+        String normalized = sourceSystem.trim().toLowerCase();
+        if (!"web".equals(normalized) && !"app".equals(normalized)) {
+            throw new IllegalArgumentException("用户来源仅支持 web（知识服务）或 app（掌上博物馆）");
         }
+        return normalized;
+    }
+
+    private static Byte normalizeSex(Byte sex) {
+        if (sex == null) {
+            return null;
+        }
+        if (sex < 0 || sex > 2) {
+            throw new IllegalArgumentException("性别仅支持 0未知、1男、2女");
+        }
+        return sex;
     }
 }
-

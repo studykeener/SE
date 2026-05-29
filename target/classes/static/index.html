@@ -72,6 +72,19 @@
         }
         .dashboard-pending-card:hover { border-color: var(--primary); }
         .dashboard-pending-card .num { font-size: 28px; font-weight: 800; color: var(--primary); line-height: 1.1; }
+        .rbac-hint { margin:0 0 12px; color:var(--muted); font-size:13px; line-height:1.6; }
+        .rbac-steps { margin:0 0 14px; padding-left:18px; color:var(--muted); font-size:13px; line-height:1.7; }
+        .rbac-perm-groups { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:10px; margin:10px 0; }
+        .rbac-perm-group { border:1px solid var(--line); border-radius:8px; padding:10px; background:#f8fafc; }
+        .rbac-perm-group-title { font-weight:600; font-size:13px; margin-bottom:8px; }
+        .rbac-perm-item { display:flex; align-items:center; gap:6px; font-size:13px; margin:4px 0; cursor:pointer; }
+        .rbac-perm-item input { margin:0; }
+        .rbac-role-tag { display:inline-block; padding:2px 8px; border-radius:6px; font-size:12px; background:#e0e7ff; color:#3730a3; }
+        .rbac-role-tag.sys { background:#fef3c7; color:#92400e; }
+        .user-avatar-thumb { width:32px; height:32px; border-radius:50%; object-fit:cover; vertical-align:middle; background:#e5e7eb; }
+        .user-modal-tabs { display:flex; gap:8px; margin-bottom:10px; }
+        .user-modal-tab { height:32px; border:1px solid var(--line); border-radius:8px; padding:0 12px; cursor:pointer; background:#f8fafc; font-size:13px; }
+        .user-modal-tab.on { background:#dbeafe; border-color:#60a5fa; color:#1d4ed8; font-weight:600; }
     </style>
 </head>
 <body>
@@ -115,24 +128,48 @@
 
 <div id="userBehaviorModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true">
     <div class="modal-box" style="max-width:980px;" onclick="event.stopPropagation()">
-        <h3 class="modal-title">用户行为记录</h3>
-        <p class="muted" id="userBehaviorModalHint" style="font-size:12px; margin:0 0 8px;">按类型与时间筛选，可新增行为记录。</p>
-        <div class="toolbar" style="margin-bottom:8px;">
-            <input class="input" id="behaviorFilterType" placeholder="行为类型(如 COMMENT)" style="min-width:180px;">
-            <input class="input" id="behaviorFilterFrom" type="datetime-local" title="行为时间起">
-            <input class="input" id="behaviorFilterTo" type="datetime-local" title="行为时间止">
-            <button type="button" class="btn btn-light" onclick="loadUserBehaviors(0)">查询</button>
-            <button type="button" class="btn btn-light" onclick="resetUserBehaviorFilters()">重置</button>
+        <h3 class="modal-title">用户追溯</h3>
+        <p class="muted" id="userBehaviorModalHint" style="font-size:12px; margin:0 0 8px;">查看用户行为记录与处罚/权限变更记录，用于违规行为溯源。</p>
+        <div class="user-modal-tabs">
+            <button type="button" class="user-modal-tab on" id="userTabBehaviors" onclick="switchUserTraceTab('behaviors')">行为记录</button>
+            <button type="button" class="user-modal-tab" id="userTabAudit" onclick="switchUserTraceTab('audit')">处罚/权限变更</button>
         </div>
-        <div class="inline" style="margin-bottom:8px;">
-            <input class="input" id="newBehaviorType" placeholder="行为类型(必填，如 COMMENT)" style="min-width:160px;">
-            <input class="input" id="newBehaviorContent" placeholder="行为内容(可选)" style="min-width:220px;">
-            <input class="input" id="newBehaviorSourceSystem" placeholder="来源系统(必填，如 MUSEUM_APP)" style="min-width:180px;">
-            <input class="input" id="newBehaviorSourceRecordId" placeholder="来源记录ID(可选)" style="min-width:140px;">
-            <button type="button" class="btn btn-primary" onclick="createUserBehavior()">新增行为</button>
+        <div id="userTraceBehaviorsPanel">
+            <div class="toolbar" style="margin-bottom:8px;">
+                <select class="select" id="behaviorFilterType" title="行为类型">
+                    <option value="">全部类型</option>
+                    <option value="COMMENT">评论</option>
+                    <option value="UPLOAD">上传</option>
+                    <option value="POST">发布内容</option>
+                    <option value="LOGIN">登录</option>
+                </select>
+                <input class="input" id="behaviorFilterFrom" type="datetime-local" title="行为时间起">
+                <input class="input" id="behaviorFilterTo" type="datetime-local" title="行为时间止">
+                <button type="button" class="btn btn-light" onclick="loadUserBehaviors(0)">查询</button>
+                <button type="button" class="btn btn-light" onclick="resetUserBehaviorFilters()">重置</button>
+            </div>
+            <div class="inline" style="margin-bottom:8px;">
+                <select class="select" id="newBehaviorType" title="行为类型">
+                    <option value="COMMENT">评论</option>
+                    <option value="UPLOAD">上传</option>
+                    <option value="POST">发布内容</option>
+                    <option value="LOGIN">登录</option>
+                </select>
+                <input class="input" id="newBehaviorContent" placeholder="行为内容（可选）" style="min-width:220px;">
+                <select class="select" id="newBehaviorSourceSystem" title="来源">
+                    <option value="web">知识服务 Web</option>
+                    <option value="app">掌上博物馆 App</option>
+                </select>
+                <input class="input" id="newBehaviorSourceRecordId" placeholder="关联记录ID（可选）" style="min-width:140px;">
+                <button type="button" class="btn btn-primary" onclick="createUserBehavior()">补录行为</button>
+            </div>
+            <p id="userBehaviorMsg" class="msg"></p>
+            <table id="userBehaviorTable"></table>
         </div>
-        <p id="userBehaviorMsg" class="msg"></p>
-        <table id="userBehaviorTable"></table>
+        <div id="userTraceAuditPanel" style="display:none;">
+            <p id="userAuditMsg" class="msg muted" style="font-size:12px;"></p>
+            <table id="userAuditTable"></table>
+        </div>
         <div class="btn-row" style="margin-top:12px; justify-content:flex-end;">
             <button type="button" class="btn btn-light" onclick="closeUserBehaviorModal()">关闭</button>
         </div>
@@ -149,8 +186,6 @@
                 <button class="menu-btn" data-page="rbacPage" onclick="switchPage('rbacPage', this)">角色权限管理</button>
                 <button class="menu-btn" data-page="userPage" onclick="switchPage('userPage', this)">平台用户管理</button>
                 <button class="menu-btn" data-page="reviewPage" onclick="openReviewSectionFromMenu('queue', this)">内容审核</button>
-                <button class="menu-btn" id="sensitiveMenuBtn" onclick="openReviewSectionFromMenu('sensitive', this)">敏感词库</button>
-                <button class="menu-btn" id="reviewStatsMenuBtn" onclick="openReviewSectionFromMenu('stats', this)">审核统计</button>
                 <button class="menu-btn" data-page="artifactPage" onclick="switchPage('artifactPage', this)">文物数据管理</button>
                 <button class="menu-btn" data-page="kgPage" onclick="switchPage('kgPage', this)">知识图谱管理</button>
                 <button class="menu-btn" data-page="backupPage" onclick="switchPage('backupPage', this)">数据备份与恢复</button>
@@ -188,14 +223,11 @@
                 <div id="adminPage" class="page">
                     <div class="panel">
                         <h3>管理员管理</h3>
-                        <p class="muted" style="font-size:12px; margin-top:0;">仅超级管理员可访问。系统预置 <code>admin</code> 不可删除、不可降级、不可禁用。</p>
+                        <p class="muted" style="font-size:12px; margin-top:0;">每个管理员仅拥有一个角色，在创建或修改时选择即可。系统预置 <code>admin</code> 不可删除、不可降级、不可禁用。</p>
                         <div class="toolbar">
                             <input class="input" id="adminFilterUsername" placeholder="按用户名筛选" style="min-width:160px;">
                             <select class="select" id="adminFilterRole" title="按角色筛选">
                                 <option value="">全部角色</option>
-                                <option value="SUPER_ADMIN">超级管理员</option>
-                                <option value="DATA_ADMIN">数据管理员</option>
-                                <option value="CONTENT_REVIEWER">内容审核员</option>
                             </select>
                             <select class="select" id="adminFilterStatus" title="按状态筛选">
                                 <option value="">全部状态</option>
@@ -209,10 +241,8 @@
                         <div class="inline">
                             <input class="input" id="newAdminUsername" placeholder="新管理员用户名">
                             <input class="input" id="newAdminPassword" placeholder="新管理员密码">
-                            <select class="select" id="newAdminRole">
-                                <option value="SUPER_ADMIN">超级管理员</option>
-                                <option value="DATA_ADMIN">数据管理员</option>
-                                <option value="CONTENT_REVIEWER">内容审核员</option>
+                            <select class="select" id="newAdminRole" title="角色（每人仅一个）">
+                                <option value="">加载角色中…</option>
                             </select>
                             <button class="btn btn-primary" onclick="createAdmin()">创建管理员</button>
                         </div>
@@ -220,10 +250,8 @@
                             <span>修改 <strong id="editAdminNameLabel"></strong>：</span>
                             <input type="hidden" id="editAdminId">
                             <input type="hidden" id="editAdminUsername">
-                            <select class="select" id="editAdminRole" title="角色">
-                                <option value="SUPER_ADMIN">超级管理员</option>
-                                <option value="DATA_ADMIN">数据管理员</option>
-                                <option value="CONTENT_REVIEWER">内容审核员</option>
+                            <select class="select" id="editAdminRole" title="角色（每人仅一个）">
+                                <option value="">加载角色中…</option>
                             </select>
                             <select class="select" id="editAdminStatus" title="状态">
                                 <option value="ENABLED">正常</option>
@@ -239,30 +267,68 @@
                 </div>
                 <div id="rbacPage" class="page">
                     <div class="panel">
-                        <h3>角色与权限管理</h3>
+                        <h3>角色权限管理</h3>
+                        <p class="rbac-hint">本页只负责<strong>定义角色和权限</strong>。给管理员指定角色请到「管理员管理」——创建或修改账号时选一个角色即可（每人仅一个角色）。</p>
+                        <ol class="rbac-steps">
+                            <li>下方可查看全部角色；系统内置角色（超级管理员、内容审核员、数据管理员）不可删除。</li>
+                            <li>「新建角色」时直接勾选该角色拥有的权限，一次保存完成。</li>
+                            <li>已有角色需要调整时，在「调整已有角色权限」里选择角色并修改勾选。</li>
+                        </ol>
+                        <div class="toolbar">
+                            <button class="btn btn-light" type="button" onclick="loadRolesAndPermissions()">刷新列表</button>
+                        </div>
+                        <div id="rbacRoleList" class="muted" style="margin-bottom:12px;">加载中…</div>
                         <p id="rbacMsg" class="msg" style="display:none;"></p>
-                        <table id="roleTable" style="display:none;"></table>
-                        <table id="permissionTable" style="display:none;"></table>
+                    </div>
+                    <div class="panel">
+                        <h3>新建角色</h3>
+                        <div class="inline" style="margin-bottom:8px;">
+                            <input id="rbacNewRoleName" class="input" placeholder="角色名称（中文，如：运营专员）" style="min-width:200px;">
+                            <input id="rbacNewRoleCode" class="input" placeholder="角色编码（英文大写，如：CUSTOM_OPS）" style="min-width:220px;">
+                            <input id="rbacNewRoleDesc" class="input" placeholder="描述（可选）" style="min-width:160px;">
+                        </div>
+                        <div class="inline" style="margin-bottom:8px;">
+                            <span class="muted">勾选该角色拥有的权限：</span>
+                            <button class="btn btn-light" type="button" onclick="selectRbacPerms('rbac-new-perm-cb', true)">全选</button>
+                            <button class="btn btn-light" type="button" onclick="selectRbacPerms('rbac-new-perm-cb', false)">全不选</button>
+                            <button class="btn btn-primary" type="button" onclick="createRole()">创建角色并保存权限</button>
+                        </div>
+                        <div id="rbacNewPermCheckboxes" class="rbac-perm-groups muted">加载权限中…</div>
+                        <div id="rbacCreateMsg" class="msg"></div>
+                    </div>
+                    <div class="panel">
+                        <h3>调整已有角色权限</h3>
+                        <div class="inline" style="margin-bottom:8px;">
+                            <label class="muted">选择角色：</label>
+                            <select id="rbacRoleSelect" class="select" style="min-width:260px;" onchange="onRbacRoleSelectChange()">
+                                <option value="">请先刷新列表</option>
+                            </select>
+                            <button class="btn btn-light" type="button" onclick="selectRbacPerms('rbac-edit-perm-cb', true)">全选</button>
+                            <button class="btn btn-light" type="button" onclick="selectRbacPerms('rbac-edit-perm-cb', false)">全不选</button>
+                            <button class="btn btn-primary" type="button" onclick="assignRolePermissions()">保存权限</button>
+                        </div>
+                        <div id="rbacPermCheckboxes" class="rbac-perm-groups muted">请先选择角色</div>
+                        <div id="rbacAssignPermMsg" class="msg"></div>
                     </div>
                 </div>
                 <div id="userPage" class="page">
                     <div class="panel">
-                        <h3>统一用户管理</h3>
-                        <p class="muted" style="font-size:12px; margin-top:0;">统一管理全平台用户，按用户名/来源/注册时间筛选，支持批量操作、细粒度权限与行为追溯。</p>
+                        <h3>平台用户管理</h3>
+                        <p class="muted" style="font-size:12px; margin-top:0;">管理知识服务 Web 端与掌上博物馆 App 的前台用户（对应数据库 <code>user</code> 表）。支持按用户名、来源、注册时间筛选，批量启用/禁用，以及禁止评论、禁止上传等细粒度限制。</p>
                         <div class="toolbar" style="margin-bottom:8px;">
-                            <input class="input" id="filterUserName" placeholder="用户名(模糊)">
-                            <select class="select" id="filterUserSource" title="来源">
+                            <input class="input" id="filterUserName" placeholder="用户名（模糊）" style="min-width:140px;">
+                            <select class="select" id="filterUserSource" title="用户来源">
                                 <option value="">全部来源</option>
-                                <option value="WEB">Web 端</option>
-                                <option value="APP">手机端</option>
+                                <option value="web">知识服务 Web</option>
+                                <option value="app">掌上博物馆 App</option>
                             </select>
-                            <select class="select" id="filterUserStatus" title="状态">
+                            <select class="select" id="filterUserStatus" title="账号状态">
                                 <option value="">全部状态</option>
-                                <option value="ENABLED">启用</option>
-                                <option value="DISABLED">禁用</option>
+                                <option value="ENABLED">正常</option>
+                                <option value="DISABLED">已禁用</option>
                             </select>
-                            <input class="input" id="filterUserCreatedFrom" type="datetime-local" title="注册起">
-                            <input class="input" id="filterUserCreatedTo" type="datetime-local" title="注册止">
+                            <input class="input" id="filterUserCreatedFrom" type="datetime-local" title="注册时间起">
+                            <input class="input" id="filterUserCreatedTo" type="datetime-local" title="注册时间止">
                             <button class="btn btn-primary" onclick="loadPlatformUsers(0)">查询</button>
                             <button class="btn btn-light" onclick="resetUserFilters()">重置</button>
                             <button class="btn btn-light" onclick="loadPlatformUsers()">刷新</button>
@@ -270,36 +336,53 @@
                         <div class="toolbar" id="userBatchBar">
                             <button class="btn btn-light" onclick="userBatchStatus('ENABLED')">批量启用</button>
                             <button class="btn btn-light" onclick="userBatchStatus('DISABLED')">批量禁用</button>
+                            <button class="btn btn-light" onclick="userBatchRestrict('comment', false)">批量禁止评论</button>
+                            <button class="btn btn-light" onclick="userBatchRestrict('comment', true)">批量恢复评论</button>
+                            <button class="btn btn-light" onclick="userBatchRestrict('upload', false)">批量禁止上传</button>
+                            <button class="btn btn-light" onclick="userBatchRestrict('upload', true)">批量恢复上传</button>
                             <button class="btn btn-danger" onclick="userBatchDelete()">批量删除</button>
                         </div>
-                        <div class="inline" id="userCreateBar">
-                            <input class="input" id="newUserUsername" placeholder="用户名">
-                            <input class="input" id="newUserDisplayName" placeholder="显示名(可选)">
-                            <input class="input" id="newUserEmail" placeholder="邮箱">
-                            <input class="input" id="newUserPhone" placeholder="手机号(可选)">
-                            <select class="select" id="newUserSource">
-                                <option value="WEB">Web 端</option>
-                                <option value="APP">手机端</option>
+                        <div class="inline" id="userCreateBar" style="flex-wrap:wrap;">
+                            <input class="input" id="newUserUsername" placeholder="用户名 *" style="min-width:120px;">
+                            <input class="input" id="newUserDisplayName" placeholder="昵称" style="min-width:100px;">
+                            <input class="input" id="newUserEmail" type="email" placeholder="邮箱" style="min-width:160px;">
+                            <input class="input" id="newUserPhone" placeholder="手机号" style="min-width:130px;">
+                            <input class="input" id="newUserAvatarUrl" placeholder="头像 URL" style="min-width:180px;">
+                            <select class="select" id="newUserSex" title="性别">
+                                <option value="">性别未知</option>
+                                <option value="1">男</option>
+                                <option value="2">女</option>
                             </select>
-                            <input class="input" id="newUserSourceUserId" placeholder="来源用户ID">
+                            <select class="select" id="newUserSource" title="用户来源">
+                                <option value="web">知识服务 Web</option>
+                                <option value="app">掌上博物馆 App</option>
+                            </select>
+                            <input class="input" id="newUserPassword" type="password" placeholder="初始密码（留空默认 ChangeMe123）" style="min-width:200px;">
                             <button class="btn btn-primary" onclick="createPlatformUser()">创建用户</button>
                         </div>
                         <div class="inline" id="userEditPanel" style="display:none; margin-top:8px; padding:10px; background:#f8fafc; border:1px solid var(--line); border-radius:8px; width:100%; flex-wrap:wrap;">
                             <input type="hidden" id="editUserId">
                             <span>编辑 <strong id="editUserNameLabel"></strong>：</span>
                             <input class="input" id="editUserUsername" placeholder="用户名" style="min-width:120px;">
-                            <input class="input" id="editUserDisplayName" placeholder="显示名" style="min-width:120px;">
-                            <input class="input" id="editUserEmail" type="email" placeholder="邮箱" style="min-width:180px;">
-                            <input class="input" id="editUserPhone" placeholder="手机号" style="min-width:140px;">
-                            <select class="select" id="editUserSource">
-                                <option value="WEB">Web 端</option>
-                                <option value="APP">手机端</option>
+                            <input class="input" id="editUserDisplayName" placeholder="昵称" style="min-width:100px;">
+                            <input class="input" id="editUserEmail" type="email" placeholder="邮箱" style="min-width:160px;">
+                            <input class="input" id="editUserPhone" placeholder="手机号" style="min-width:130px;">
+                            <input class="input" id="editUserAvatarUrl" placeholder="头像 URL" style="min-width:180px;">
+                            <select class="select" id="editUserSex" title="性别">
+                                <option value="">未知</option>
+                                <option value="1">男</option>
+                                <option value="2">女</option>
                             </select>
-                            <input class="input" id="editUserSourceUserId" placeholder="来源用户ID" style="min-width:140px;">
-                            <select class="select" id="editUserStatus">
-                                <option value="ENABLED">启用</option>
-                                <option value="DISABLED">禁用</option>
+                            <select class="select" id="editUserSource" title="用户来源">
+                                <option value="web">知识服务 Web</option>
+                                <option value="app">掌上博物馆 App</option>
                             </select>
+                            <select class="select" id="editUserStatus" title="账号状态" onchange="toggleUserDisabledReason()">
+                                <option value="ENABLED">正常</option>
+                                <option value="DISABLED">已禁用</option>
+                            </select>
+                            <input class="input" id="editUserDisabledReason" placeholder="禁用原因（禁用时填写）" style="min-width:180px; display:none;">
+                            <span class="muted" id="editUserLastLogin" style="font-size:12px;"></span>
                             <label class="muted" style="font-size:12px; display:inline-flex; align-items:center; gap:4px;"><input type="checkbox" id="editUserComment" checked> 允许评论</label>
                             <label class="muted" style="font-size:12px; display:inline-flex; align-items:center; gap:4px;"><input type="checkbox" id="editUserUpload" checked> 允许上传</label>
                             <button class="btn btn-primary" onclick="saveEditPlatformUser()">保存</button>
@@ -634,6 +717,9 @@
 <script>
     let jwtToken = localStorage.getItem("jwtToken") || "";
     let currentAppRole = "";
+    let currentPermissions = [];
+    let rbacRolesCache = [];
+    let rbacPermsCache = [];
     let currentReviewSection = "queue";
     let backupTableOptions = [];
     let backupSelectedTables = [];
@@ -646,8 +732,8 @@
     const pageTitles = {
         dashboardPage: "系统概览",
         adminPage: "管理员管理",
-        rbacPage: "角色与权限",
-        userPage: "统一用户",
+        rbacPage: "角色权限管理",
+        userPage: "平台用户管理",
         reviewPage: "内容审核",
         artifactPage: "文物数据",
         kgPage: "知识图谱管理",
@@ -657,10 +743,59 @@
     };
 
     function roleToZh(r) {
+        const cached = (rbacRolesCache || []).find(x => x.code === r);
+        if (cached) return cached.name || r;
         if (r === "SUPER_ADMIN") return "超级管理员";
         if (r === "DATA_ADMIN") return "数据管理员";
         if (r === "CONTENT_REVIEWER") return "内容审核员";
         return r;
+    }
+    function moduleToZh(m) {
+        const map = {
+            USER: "用户管理",
+            REVIEW: "内容审核",
+            ARTIFACT: "文物数据",
+            LOG: "日志",
+            STATS: "统计看板",
+            ROLE: "角色权限",
+            ADMIN: "管理员",
+            BACKUP: "备份恢复",
+            OTHER: "其他"
+        };
+        return map[m] || m || "其他";
+    }
+    function permissionToZh(p) {
+        const map = {
+            USER_VIEW: "查看用户",
+            USER_EDIT: "编辑用户",
+            USER_DELETE: "删除用户",
+            USER_BAN: "禁用用户",
+            REVIEW_VIEW: "查看审核",
+            REVIEW_ACTION: "审核操作",
+            ARTIFACT_VIEW: "查看文物",
+            ARTIFACT_EDIT: "编辑文物",
+            ARTIFACT_DELETE: "删除文物",
+            ARTIFACT_IMPORT_EXPORT: "导入导出文物",
+            LOG_VIEW: "查看日志",
+            STATS_VIEW: "查看看板",
+            ROLE_VIEW: "查看角色权限",
+            ROLE_CREATE: "创建角色",
+            ROLE_ASSIGN: "分配角色",
+            PERMISSION_ASSIGN: "分配权限",
+            ADMIN_MANAGE: "管理员管理",
+            BACKUP_MANAGE: "备份恢复"
+        };
+        if (!p) return "";
+        if (p.code && map[p.code]) return map[p.code];
+        if (p.name && !/^[A-Z][A-Z0-9_]+$/.test(p.name)) return p.name;
+        if (p.description && !/^[A-Z][A-Z0-9_]+$/.test(p.description)) return p.description;
+        return p.name || p.code || "";
+    }
+    function roleDisplayName(role) {
+        if (!role) return "";
+        const zh = roleToZh(role.code);
+        if (zh !== role.code) return `${role.name || zh}（${zh}）`;
+        return role.name || role.code;
     }
     function statusToZh(s) {
         if (s === "ENABLED") return "启用";
@@ -668,9 +803,48 @@
         return s;
     }
     function sourceToZh(s) {
-        if (s === "APP") return "手机端";
-        if (s === "WEB") return "Web 端";
-        return s;
+        const v = String(s || "").toLowerCase();
+        if (v === "app") return "掌上博物馆";
+        if (v === "web") return "知识服务";
+        return s || "";
+    }
+    function sexToZh(s) {
+        const n = s == null || s === "" ? null : Number(s);
+        if (n === 1) return "男";
+        if (n === 2) return "女";
+        return "未知";
+    }
+    function behaviorTypeToZh(t) {
+        const v = String(t || "").toUpperCase();
+        if (v === "COMMENT") return "评论";
+        if (v === "UPLOAD") return "上传";
+        if (v === "POST") return "发布内容";
+        if (v === "LOGIN") return "登录";
+        return t || "";
+    }
+    function userStatusCodeToZh(code) {
+        if (code === 1) return "正常";
+        if (code === 0) return "已禁用";
+        return code == null ? "—" : String(code);
+    }
+    function boolFlagToZh(v) {
+        if (v === true) return "允许";
+        if (v === false) return "禁止";
+        return "—";
+    }
+    function formatUserAvatar(url) {
+        if (!url) return "—";
+        const safe = escapeHtml(url);
+        return `<img class="user-avatar-thumb" src="${safe}" alt="" onerror="this.outerHTML='—'">`;
+    }
+    function normalizeUserSourceValue(s) {
+        const v = String(s || "web").toLowerCase();
+        return v === "app" ? "app" : "web";
+    }
+    function toggleUserDisabledReason() {
+        const st = document.getElementById("editUserStatus")?.value;
+        const el = document.getElementById("editUserDisabledReason");
+        if (el) el.style.display = st === "DISABLED" ? "inline-block" : "none";
     }
     function localDateTimeToApi(s) {
         if (!s) return null;
@@ -794,6 +968,12 @@
             loadBackupTables();
             loadBackupRecords();
         }
+        if (pageId === "rbacPage") {
+            loadRolesAndPermissions();
+        }
+        if (pageId === "adminPage" && hasPerm("ADMIN_MANAGE")) {
+            loadAdminRoleOptions();
+        }
     }
     function setReviewSection(section) {
         resetReviewSubsectionUI();
@@ -869,10 +1049,11 @@
             localStorage.setItem("jwtToken", jwtToken);
             const me = result.data.adminUser;
             currentAppRole = me.role;
-            setMenuByRole(me.role);
+            currentPermissions = result.data.permissions || [];
+            setMenuByPermissions(currentPermissions, me.role);
             document.getElementById("me").textContent = `${me.username} ｜ ${roleToZh(me.role)}`;
             showApp();
-            loadAfterLogin(me.role);
+            loadAfterLogin(currentPermissions, me.role);
             setMsg("loginMsg", "登录成功");
         } catch (e) {
             setMsg("loginMsg", e.message, false);
@@ -907,23 +1088,28 @@
         setIf("reviewFilterRiskMax", "");
     }
 
-    function loadAfterLogin(role) {
+    function hasPerm(code) {
+        return (currentPermissions || []).includes(code);
+    }
+
+    function loadAfterLogin(permissions, role) {
         resetQuerySelectionsOnLogin();
         const ubar = document.getElementById("userCreateBar");
-        if (role === "SUPER_ADMIN") { if (ubar) ubar.style.display = "flex"; }
+        if (hasPerm("USER_EDIT")) { if (ubar) ubar.style.display = "flex"; }
         else { if (ubar) ubar.style.display = "none"; }
-        if (role === "SUPER_ADMIN" || role === "CONTENT_REVIEWER") { loadDashboard(); }
-        if (role === "SUPER_ADMIN") { loadAdmins(); loadRolesAndPermissions(); }
-        if (role === "SUPER_ADMIN") { loadPlatformUsers(); loadArtifacts(); loadIntegrationStatus(); }
-        if (role === "DATA_ADMIN") { loadArtifacts(); }
-        if (role === "SUPER_ADMIN" || role === "CONTENT_REVIEWER") {
+        if (hasPerm("STATS_VIEW")) { loadDashboard(); }
+        if (hasPerm("ROLE_VIEW") || hasPerm("PERMISSION_ASSIGN")) { loadRolesAndPermissions(); }
+        if (hasPerm("ADMIN_MANAGE")) { loadAdminRoleOptions().then(() => loadAdmins()); }
+        if (hasPerm("USER_VIEW")) { loadPlatformUsers(); }
+        if (hasPerm("ARTIFACT_VIEW")) { loadArtifacts(); loadIntegrationStatus(); }
+        if (hasPerm("REVIEW_VIEW") || hasPerm("REVIEW_ACTION")) {
             loadReviewContents();
             loadReviewStats();
             loadSensitiveWords();
-            if (role === "SUPER_ADMIN" || role === "CONTENT_REVIEWER") { loadReviewStrategy(); }
+            if (hasPerm("REVIEW_ACTION")) { loadReviewStrategy(); }
             setReviewSection("queue");
         }
-        if (role === "SUPER_ADMIN") { loadLogs(); }
+        if (hasPerm("LOG_VIEW")) { loadLogs(); }
     }
 
     function logout() {
@@ -936,12 +1122,14 @@
     async function tryAutoLogin() {
         if (!jwtToken) return;
         try {
-            const me = await api("/api/admin/auth/me");
+            const resp = await api("/api/admin/auth/me");
+            const me = resp.adminUser || resp;
             currentAppRole = me.role;
-            setMenuByRole(me.role);
+            currentPermissions = resp.permissions || [];
+            setMenuByPermissions(currentPermissions, me.role);
             document.getElementById("me").textContent = `${me.username} ｜ ${roleToZh(me.role)}`;
             showApp();
-            loadAfterLogin(me.role);
+            loadAfterLogin(currentPermissions, me.role);
         } catch (e) {
             jwtToken = "";
             currentAppRole = "";
@@ -1020,7 +1208,7 @@
         if (Object.keys(payload).length === 0) { setMsg("adminMsg", "请调整状态、角色或填写新密码", false); return; }
         try {
             await api(`/api/admin/users/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
-            setMsg("adminMsg", "已更新", true);
+            setMsg("adminMsg", "已更新；若修改了角色，对方需重新登录后权限才会生效", true);
             cancelEditAdmin();
             await loadAdmins();
         } catch (e) { setMsg("adminMsg", e.message, false); }
@@ -1037,13 +1225,18 @@
 
     async function createAdmin() {
         try {
+            const role = document.getElementById("newAdminRole").value;
             const payload = {
                 username: document.getElementById("newAdminUsername").value.trim(),
                 password: document.getElementById("newAdminPassword").value.trim(),
-                role: document.getElementById("newAdminRole").value
+                role
             };
+            if (!payload.username || !payload.password) { setMsg("adminMsg", "请填写用户名和密码", false); return; }
+            if (!role) { setMsg("adminMsg", "请选择角色", false); return; }
             await api("/api/admin/users", { method: "POST", body: JSON.stringify(payload) });
-            setMsg("adminMsg", "创建管理员成功");
+            document.getElementById("newAdminUsername").value = "";
+            document.getElementById("newAdminPassword").value = "";
+            setMsg("adminMsg", "创建管理员成功", true);
             await loadAdmins();
         } catch (e) { setMsg("adminMsg", e.message, false); }
     }
@@ -1105,9 +1298,11 @@
                 if (next) next.disabled = userListPage >= totalPages - 1;
             }
             document.getElementById("userTable").innerHTML =
-                "<tr><th><input type=\"checkbox\" onchange=\"toggleAllUsers(this.checked)\" title=\"全选\"></th><th>ID</th><th>用户名</th><th>显示名</th><th>邮箱</th><th>来源</th><th>来源ID</th><th>状态</th><th>注册时间</th><th>评论</th><th>上传</th><th>操作</th></tr>" +
+                "<tr><th><input type=\"checkbox\" onchange=\"toggleAllUsers(this.checked)\" title=\"全选\"></th><th>ID</th><th>头像</th><th>用户名</th><th>昵称</th><th>邮箱</th><th>手机</th><th>性别</th><th>来源</th><th>状态</th><th>注册时间</th><th>最近登录</th><th>评论</th><th>上传</th><th>操作</th></tr>" +
                 list.map(x => {
-                    return `<tr><td><input type="checkbox" class="user-pick" data-id="${x.id}"></td><td>${x.id}</td><td>${x.username || ""}</td><td>${x.displayName || ""}</td><td>${x.email || ""}</td><td>${sourceToZh(x.sourceSystem)}</td><td>${x.sourceUserId || ""}</td><td>${statusToZh(x.status)}</td><td>${x.createdAt || ""}</td><td>${x.commentAllowed ? "允许" : "禁止"}</td><td>${x.uploadAllowed ? "允许" : "禁止"}</td><td><button class="btn btn-light" onclick="openEditUser(${x.id})">编辑</button> <button class="btn btn-light" onclick="openUserBehaviorModal(${x.id}, '${String(x.username || '').replace(/'/g, '')}')">行为</button> <button class="btn btn-danger" onclick="deletePlatformUser(${x.id}, '${String(x.username || "").replace(/'/g, "")}')">删除</button></td></tr>`;
+                    const uname = String(x.username || "").replace(/'/g, "");
+                    const lastLogin = x.lastLoginAt ? `${x.lastLoginAt}${x.lastLoginIp ? " / " + x.lastLoginIp : ""}` : "—";
+                    return `<tr><td><input type="checkbox" class="user-pick" data-id="${x.id}"></td><td>${x.id}</td><td>${formatUserAvatar(x.avatarUrl)}</td><td>${escapeHtml(x.username || "")}</td><td>${escapeHtml(x.displayName || "")}</td><td>${escapeHtml(x.email || "")}</td><td>${escapeHtml(x.phone || "")}</td><td>${sexToZh(x.sex)}</td><td>${sourceToZh(x.sourceSystem)}</td><td>${statusToZh(x.status)}</td><td>${x.createdAt || ""}</td><td>${escapeHtml(lastLogin)}</td><td>${x.commentAllowed ? "允许" : "禁止"}</td><td>${x.uploadAllowed ? "允许" : "禁止"}</td><td><button class="btn btn-light" onclick="openEditUser(${x.id})">编辑</button> <button class="btn btn-light" onclick="openUserBehaviorModal(${x.id}, '${uname}')">追溯</button> <button class="btn btn-danger" onclick="deletePlatformUser(${x.id}, '${uname}')">删除</button></td></tr>`;
                 }).join("");
             setMsg("userMsg", "加载成功", true);
         } catch (e) { setMsg("userMsg", e.message, false); }
@@ -1117,15 +1312,24 @@
         try { u = await api("/api/admin/unified-users/" + id); } catch (e) { setMsg("userMsg", e.message, false); return; }
         document.getElementById("editUserId").value = u.id;
         document.getElementById("editUserNameLabel").textContent = u.username;
-        document.getElementById("editUserUsername").value = u.username;
+        document.getElementById("editUserUsername").value = u.username || "";
         document.getElementById("editUserDisplayName").value = u.displayName || "";
         document.getElementById("editUserEmail").value = u.email || "";
         document.getElementById("editUserPhone").value = u.phone || "";
-        document.getElementById("editUserSource").value = u.sourceSystem;
-        document.getElementById("editUserSourceUserId").value = u.sourceUserId || "";
+        document.getElementById("editUserAvatarUrl").value = u.avatarUrl || "";
+        document.getElementById("editUserSex").value = u.sex == null ? "" : String(u.sex);
+        document.getElementById("editUserSource").value = normalizeUserSourceValue(u.sourceSystem);
         document.getElementById("editUserStatus").value = u.status;
+        document.getElementById("editUserDisabledReason").value = u.disabledReason || "";
         document.getElementById("editUserComment").checked = !!u.commentAllowed;
         document.getElementById("editUserUpload").checked = !!u.uploadAllowed;
+        const ll = document.getElementById("editUserLastLogin");
+        if (ll) {
+            ll.textContent = u.lastLoginAt
+                ? `最近登录：${u.lastLoginAt}${u.lastLoginIp ? "（" + u.lastLoginIp + "）" : ""}`
+                : "最近登录：—";
+        }
+        toggleUserDisabledReason();
         document.getElementById("userEditPanel").style.display = "inline-flex";
     }
     function cancelEditUser() {
@@ -1133,19 +1337,21 @@
     }
     async function saveEditPlatformUser() {
         const id = document.getElementById("editUserId").value;
-        const sourceUserId = document.getElementById("editUserSourceUserId").value.trim();
-        if (!sourceUserId) { setMsg("userMsg", "来源用户ID不能为空", false); return; }
+        const sexVal = document.getElementById("editUserSex").value;
         const payload = {
             username: document.getElementById("editUserUsername").value.trim(),
             displayName: document.getElementById("editUserDisplayName").value.trim() || null,
             email: document.getElementById("editUserEmail").value.trim() || null,
             phone: document.getElementById("editUserPhone").value.trim() || null,
+            avatarUrl: document.getElementById("editUserAvatarUrl").value.trim() || null,
+            sex: sexVal === "" ? null : Number(sexVal),
             sourceSystem: document.getElementById("editUserSource").value,
-            sourceUserId,
             status: document.getElementById("editUserStatus").value,
+            disabledReason: document.getElementById("editUserDisabledReason").value.trim() || null,
             commentAllowed: document.getElementById("editUserComment").checked,
             uploadAllowed: document.getElementById("editUserUpload").checked
         };
+        if (!payload.username) { setMsg("userMsg", "用户名不能为空", false); return; }
         try {
             await api("/api/admin/unified-users/" + id, { method: "PUT", body: JSON.stringify(payload) });
             setMsg("userMsg", "已保存", true);
@@ -1164,13 +1370,43 @@
     async function userBatchStatus(st) {
         const ids = selectedUserIds();
         if (!ids.length) { setMsg("userMsg", "请先勾选用户", false); return; }
-        if (!confirm("确定将选中 " + ids.length + " 个用户置为" + (st === "ENABLED" ? "启用" : "禁用") + "？")) return;
+        let reason = null;
+        if (st === "DISABLED") {
+            reason = prompt("请输入禁用原因（可留空，默认“批量禁用”）：", "批量禁用");
+            if (reason === null) return;
+        }
+        if (!confirm("确定将选中 " + ids.length + " 个用户置为" + (st === "ENABLED" ? "正常" : "已禁用") + "？")) return;
         const sp = new URLSearchParams();
         ids.forEach(x => sp.append("ids", String(x)));
         sp.set("status", st);
+        if (reason) sp.set("reason", reason);
         try {
             await api("/api/admin/unified-users/batch/status?" + sp.toString(), { method: "PATCH" });
             setMsg("userMsg", "批量状态已更新", true);
+            await loadPlatformUsers();
+        } catch (e) { setMsg("userMsg", e.message, false); }
+    }
+    async function userBatchRestrict(kind, allowed) {
+        const ids = selectedUserIds();
+        if (!ids.length) { setMsg("userMsg", "请先勾选用户", false); return; }
+        const label = kind === "comment" ? "评论" : "上传";
+        if (!confirm(`确定对选中 ${ids.length} 个用户${allowed ? "恢复" : "禁止"}${label}权限？`)) return;
+        let reason = null;
+        if (!allowed) {
+            reason = prompt(`请输入限制${label}的原因（可留空）：`, `批量禁止${label}`);
+            if (reason === null) return;
+        }
+        try {
+            for (const id of ids) {
+                const u = await api("/api/admin/unified-users/" + id);
+                const payload = {
+                    commentAllowed: kind === "comment" ? allowed : !!u.commentAllowed,
+                    uploadAllowed: kind === "upload" ? allowed : !!u.uploadAllowed,
+                    reason
+                };
+                await api(`/api/admin/unified-users/${id}/permissions`, { method: "PATCH", body: JSON.stringify(payload) });
+            }
+            setMsg("userMsg", `批量${allowed ? "恢复" : "禁止"}${label}完成`, true);
             await loadPlatformUsers();
         } catch (e) { setMsg("userMsg", e.message, false); }
     }
@@ -1187,23 +1423,26 @@
 
     async function createPlatformUser() {
         try {
-            const sourceUserId = document.getElementById("newUserSourceUserId").value.trim();
-            if (!sourceUserId) { setMsg("userMsg", "来源用户ID不能为空", false); return; }
+            const username = document.getElementById("newUserUsername").value.trim();
+            const sexVal = document.getElementById("newUserSex").value;
+            const password = document.getElementById("newUserPassword").value.trim();
             const payload = {
-                username: document.getElementById("newUserUsername").value.trim(),
+                username,
                 displayName: document.getElementById("newUserDisplayName").value.trim() || null,
                 email: document.getElementById("newUserEmail").value.trim() || null,
                 phone: document.getElementById("newUserPhone").value.trim() || null,
-                sourceSystem: document.getElementById("newUserSource").value,
-                sourceUserId
+                avatarUrl: document.getElementById("newUserAvatarUrl").value.trim() || null,
+                sex: sexVal === "" ? null : Number(sexVal),
+                sourceSystem: document.getElementById("newUserSource").value
             };
+            if (password) payload.password = password;
+            if (!username) { setMsg("userMsg", "用户名不能为空", false); return; }
             await api("/api/admin/unified-users", { method: "POST", body: JSON.stringify(payload) });
-            setMsg("userMsg", "创建统一用户成功");
-            document.getElementById("newUserUsername").value = "";
-            document.getElementById("newUserDisplayName").value = "";
-            document.getElementById("newUserEmail").value = "";
-            document.getElementById("newUserPhone").value = "";
-            document.getElementById("newUserSourceUserId").value = "";
+            setMsg("userMsg", "创建用户成功", true);
+            ["newUserUsername","newUserDisplayName","newUserEmail","newUserPhone","newUserAvatarUrl","newUserPassword"].forEach(id => {
+                const el = document.getElementById(id); if (el) el.value = "";
+            });
+            document.getElementById("newUserSex").value = "";
             await loadPlatformUsers();
         } catch (e) { setMsg("userMsg", e.message, false); }
     }
@@ -1211,11 +1450,24 @@
     let userBehaviorUserId = null;
     let userBehaviorPage = 0;
     const userBehaviorSize = 20;
+    let userTraceTab = "behaviors";
+    function switchUserTraceTab(tab) {
+        userTraceTab = tab;
+        document.getElementById("userTabBehaviors")?.classList.toggle("on", tab === "behaviors");
+        document.getElementById("userTabAudit")?.classList.toggle("on", tab === "audit");
+        const bp = document.getElementById("userTraceBehaviorsPanel");
+        const ap = document.getElementById("userTraceAuditPanel");
+        if (bp) bp.style.display = tab === "behaviors" ? "block" : "none";
+        if (ap) ap.style.display = tab === "audit" ? "block" : "none";
+        if (tab === "audit") loadUserPermissionAudit();
+    }
     function openUserBehaviorModal(userId, username) {
         userBehaviorUserId = userId;
         userBehaviorPage = 0;
+        userTraceTab = "behaviors";
+        switchUserTraceTab("behaviors");
         const hint = document.getElementById("userBehaviorModalHint");
-        if (hint) hint.textContent = `用户 ${username || userId}（ID=${userId}）行为记录`;
+        if (hint) hint.textContent = `用户 ${username || userId}（ID=${userId}）— 行为记录与处罚/权限变更追溯`;
         const m = document.getElementById("userBehaviorModal");
         if (m) {
             m.classList.add("open");
@@ -1231,12 +1483,15 @@
             m.setAttribute("aria-hidden", "true");
         }
         userBehaviorUserId = null;
-        const msg = document.getElementById("userBehaviorMsg");
-        if (msg) { msg.textContent = ""; msg.className = "msg"; }
+        ["userBehaviorMsg", "userAuditMsg"].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) { el.textContent = ""; el.className = "msg"; }
+        });
     }
     function resetUserBehaviorFilters(reload = true) {
-        const ids = ["behaviorFilterType", "behaviorFilterFrom", "behaviorFilterTo"];
-        ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
+        const typeEl = document.getElementById("behaviorFilterType");
+        if (typeEl) typeEl.value = "";
+        ["behaviorFilterFrom", "behaviorFilterTo"].forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
         if (reload && userBehaviorUserId != null) loadUserBehaviors(0);
     }
     function buildUserBehaviorQuery() {
@@ -1263,13 +1518,30 @@
             const table = document.getElementById("userBehaviorTable");
             if (table) {
                 table.innerHTML =
-                    "<tr><th>ID</th><th>类型</th><th>内容</th><th>来源系统</th><th>来源记录ID</th><th>时间</th></tr>" +
-                    list.map(x => `<tr><td>${x.id}</td><td>${x.behaviorType || ""}</td><td>${x.behaviorContent || ""}</td><td>${x.sourceSystem || ""}</td><td>${x.sourceRecordId || ""}</td><td>${x.behaviorTime || ""}</td></tr>`).join("");
+                    "<tr><th>ID</th><th>类型</th><th>内容</th><th>来源</th><th>关联记录</th><th>时间</th></tr>" +
+                    list.map(x => `<tr><td>${x.id}</td><td>${behaviorTypeToZh(x.behaviorType)}</td><td>${escapeHtml(x.behaviorContent || "")}</td><td>${sourceToZh(x.sourceSystem)}</td><td>${escapeHtml(x.sourceRecordId || "")}</td><td>${x.behaviorTime || ""}</td></tr>`).join("");
             }
             const m = document.getElementById("userBehaviorMsg");
             if (m) { m.textContent = `共 ${total} 条行为记录（第 ${userBehaviorPage + 1} 页）`; m.className = "msg ok"; }
         } catch (e) {
             const m = document.getElementById("userBehaviorMsg");
+            if (m) { m.textContent = e.message; m.className = "msg err"; }
+        }
+    }
+    async function loadUserPermissionAudit() {
+        if (userBehaviorUserId == null) return;
+        try {
+            const list = await api(`/api/admin/unified-users/${userBehaviorUserId}/permission-audit`);
+            const table = document.getElementById("userAuditTable");
+            if (table) {
+                table.innerHTML =
+                    "<tr><th>时间</th><th>操作人</th><th>账号状态</th><th>评论权限</th><th>上传权限</th><th>原因</th></tr>" +
+                    (list || []).map(x => `<tr><td>${x.operatedAt || ""}</td><td>${escapeHtml(x.operatorName || "")}</td><td>${userStatusCodeToZh(x.oldStatus)} → ${userStatusCodeToZh(x.newStatus)}</td><td>${boolFlagToZh(x.oldCanComment)} → ${boolFlagToZh(x.newCanComment)}</td><td>${boolFlagToZh(x.oldCanUpload)} → ${boolFlagToZh(x.newCanUpload)}</td><td>${escapeHtml(x.reason || "—")}</td></tr>`).join("");
+            }
+            const m = document.getElementById("userAuditMsg");
+            if (m) { m.textContent = `共 ${(list || []).length} 条处罚/权限变更记录`; m.className = "msg muted"; }
+        } catch (e) {
+            const m = document.getElementById("userAuditMsg");
             if (m) { m.textContent = e.message; m.className = "msg err"; }
         }
     }
@@ -1279,7 +1551,7 @@
         const sourceSystem = document.getElementById("newBehaviorSourceSystem").value.trim();
         if (!behaviorType || !sourceSystem) {
             const m = document.getElementById("userBehaviorMsg");
-            if (m) { m.textContent = "行为类型和来源系统不能为空"; m.className = "msg err"; }
+            if (m) { m.textContent = "行为类型和来源不能为空"; m.className = "msg err"; }
             return;
         }
         try {
@@ -1290,9 +1562,8 @@
                 sourceRecordId: document.getElementById("newBehaviorSourceRecordId").value.trim() || null
             };
             await api(`/api/admin/unified-users/${userBehaviorUserId}/behaviors`, { method: "POST", body: JSON.stringify(payload) });
-            ["newBehaviorType","newBehaviorContent","newBehaviorSourceSystem","newBehaviorSourceRecordId"].forEach(id => {
-                const el = document.getElementById(id); if (el) el.value = "";
-            });
+            document.getElementById("newBehaviorContent").value = "";
+            document.getElementById("newBehaviorSourceRecordId").value = "";
             await loadUserBehaviors(0);
         } catch (e) {
             const m = document.getElementById("userBehaviorMsg");
@@ -1535,58 +1806,184 @@
         } catch (e) { console.log(e); }
     }
 
-    async function loadRolesAndPermissions() {
+    async function loadAdminRoleOptions() {
+        if (!hasPerm("ADMIN_MANAGE") && !hasPerm("ROLE_VIEW")) return;
         try {
             const roles = await api("/api/admin/rbac/roles");
-            const perms = await api("/api/admin/rbac/permissions");
-            document.getElementById("roleTable").innerHTML =
-                "<tr><th>ID</th><th>代码</th><th>名称</th><th>描述</th></tr>" +
-                roles.map(x => `<tr><td>${x.id}</td><td>${x.code}</td><td>${x.name}</td><td>${x.description || ""}</td></tr>`).join("");
-            document.getElementById("permissionTable").innerHTML =
-                "<tr><th>ID</th><th>代码</th><th>名称</th><th>描述</th></tr>" +
-                perms.map(x => `<tr><td>${x.id}</td><td>${x.code}</td><td>${x.name}</td><td>${x.description || ""}</td></tr>`).join("");
-            setMsg("rbacMsg", "角色权限数据已加载");
-        } catch (e) { setMsg("rbacMsg", e.message, false); }
+            rbacRolesCache = roles || rbacRolesCache;
+            populateAdminRoleSelects(roles || []);
+        } catch (e) {
+            populateAdminRoleSelects([
+                { code: "SUPER_ADMIN", name: "超级管理员" },
+                { code: "CONTENT_REVIEWER", name: "内容审核员" },
+                { code: "DATA_ADMIN", name: "数据管理员" }
+            ]);
+        }
     }
 
-    function parseIds(text) {
-        return text.split(",").map(x => Number(x.trim())).filter(x => !Number.isNaN(x));
+    function populateAdminRoleSelects(roles) {
+        const filterSel = document.getElementById("adminFilterRole");
+        const newSel = document.getElementById("newAdminRole");
+        const editSel = document.getElementById("editAdminRole");
+        const filterPrev = filterSel?.value;
+        const newPrev = newSel?.value;
+        const editPrev = editSel?.value;
+        const filterOpts = '<option value="">全部角色</option>' +
+            roles.map(r => `<option value="${escapeHtml(r.code)}">${escapeHtml(roleDisplayName(r))}</option>`).join("");
+        const pickOpts = roles.map(r => `<option value="${escapeHtml(r.code)}">${escapeHtml(roleDisplayName(r))}</option>`).join("");
+        if (filterSel) filterSel.innerHTML = filterOpts;
+        if (newSel) {
+            newSel.innerHTML = pickOpts;
+            if (newPrev) newSel.value = newPrev;
+            else if (roles.some(r => r.code === "CONTENT_REVIEWER")) newSel.value = "CONTENT_REVIEWER";
+        }
+        if (editSel) {
+            editSel.innerHTML = pickOpts;
+            if (editPrev) editSel.value = editPrev;
+        }
+        if (filterSel && filterPrev) filterSel.value = filterPrev;
+    }
+
+    async function loadRolesAndPermissions() {
+        try {
+            const [roles, perms] = await Promise.all([
+                api("/api/admin/rbac/roles"),
+                api("/api/admin/rbac/permissions")
+            ]);
+            rbacRolesCache = roles || [];
+            rbacPermsCache = perms || [];
+            renderRbacRoleList();
+            renderRbacRoleSelects();
+            renderPermCheckboxGroups("rbacNewPermCheckboxes", "rbac-new-perm-cb", []);
+            renderRbacEditPermCheckboxes([]);
+            populateAdminRoleSelects(rbacRolesCache);
+            const prevRole = document.getElementById("rbacRoleSelect")?.value;
+            if (prevRole) {
+                document.getElementById("rbacRoleSelect").value = prevRole;
+                await onRbacRoleSelectChange();
+            }
+            setMsg("rbacMsg", "角色与权限列表已刷新", true);
+        } catch (e) {
+            setMsg("rbacMsg", e.message, false);
+            const listEl = document.getElementById("rbacRoleList");
+            if (listEl) listEl.textContent = "加载失败：" + e.message;
+        }
+    }
+
+    function renderRbacRoleList() {
+        const el = document.getElementById("rbacRoleList");
+        if (!el) return;
+        if (!rbacRolesCache.length) {
+            el.textContent = "暂无角色，请先创建。";
+            return;
+        }
+        el.innerHTML = "<table><tr><th>角色</th><th>编码</th><th>类型</th><th>说明</th></tr>" +
+            rbacRolesCache.map(r => {
+                const tag = r.isSystem
+                    ? '<span class="rbac-role-tag sys">系统内置</span>'
+                    : '<span class="rbac-role-tag">自定义</span>';
+                return `<tr><td>${escapeHtml(roleDisplayName(r))}</td><td>${escapeHtml(r.code)}</td><td>${tag}</td><td>${escapeHtml(r.description || "—")}</td></tr>`;
+            }).join("") + "</table>";
+    }
+
+    function renderRbacRoleSelects() {
+        const roleSel = document.getElementById("rbacRoleSelect");
+        const opts = '<option value="">请选择角色</option>' +
+            rbacRolesCache.map(r => `<option value="${r.id}">${escapeHtml(roleDisplayName(r))}</option>`).join("");
+        if (roleSel) roleSel.innerHTML = opts;
+    }
+
+    function renderPermCheckboxGroups(containerId, checkboxClass, checkedIds) {
+        const el = document.getElementById(containerId);
+        if (!el) return;
+        if (!rbacPermsCache.length) {
+            el.textContent = "暂无权限定义";
+            return;
+        }
+        const checked = new Set((checkedIds || []).map(Number));
+        const byModule = {};
+        rbacPermsCache.forEach(p => {
+            const m = p.module || "OTHER";
+            if (!byModule[m]) byModule[m] = [];
+            byModule[m].push(p);
+        });
+        el.innerHTML = Object.keys(byModule).sort().map(m => {
+            const items = byModule[m].map(p => {
+                const on = checked.has(Number(p.id)) ? " checked" : "";
+                const label = permissionToZh(p);
+                const tip = p.description && p.description !== label ? ` title="${escapeHtml(p.description)}"` : "";
+                return `<label class="rbac-perm-item"${tip}><input type="checkbox" class="${checkboxClass}" value="${p.id}"${on}>${escapeHtml(label)}</label>`;
+            }).join("");
+            return `<div class="rbac-perm-group"><div class="rbac-perm-group-title">${escapeHtml(moduleToZh(m))}</div>${items}</div>`;
+        }).join("");
+    }
+
+    function renderRbacEditPermCheckboxes(checkedIds) {
+        const roleId = document.getElementById("rbacRoleSelect")?.value;
+        const el = document.getElementById("rbacPermCheckboxes");
+        if (!el) return;
+        if (!roleId) {
+            el.innerHTML = "请先在上方选择一个角色";
+            return;
+        }
+        renderPermCheckboxGroups("rbacPermCheckboxes", "rbac-edit-perm-cb", checkedIds);
+    }
+
+    async function onRbacRoleSelectChange() {
+        const roleId = document.getElementById("rbacRoleSelect")?.value;
+        if (!roleId) {
+            renderRbacEditPermCheckboxes([]);
+            return;
+        }
+        try {
+            const ids = await api(`/api/admin/rbac/roles/${roleId}/permissions`);
+            renderRbacEditPermCheckboxes(ids || []);
+        } catch (e) {
+            setMsg("rbacAssignPermMsg", e.message, false);
+            renderRbacEditPermCheckboxes([]);
+        }
+    }
+
+    function selectRbacPerms(className, checked) {
+        document.querySelectorAll("." + className).forEach(cb => { cb.checked = checked; });
+    }
+
+    function getSelectedPermIds(className) {
+        return Array.from(document.querySelectorAll("." + className + ":checked"))
+            .map(cb => Number(cb.value))
+            .filter(id => !Number.isNaN(id));
     }
 
     async function createRole() {
         try {
             const payload = {
-                code: document.getElementById("newRoleCode").value.trim(),
-                name: document.getElementById("newRoleName").value.trim(),
-                description: document.getElementById("newRoleDesc").value.trim()
+                code: document.getElementById("rbacNewRoleCode").value.trim(),
+                name: document.getElementById("rbacNewRoleName").value.trim(),
+                description: document.getElementById("rbacNewRoleDesc").value.trim(),
+                permissionIds: getSelectedPermIds("rbac-new-perm-cb")
             };
+            if (!payload.name) { setMsg("rbacCreateMsg", "请填写角色名称", false); return; }
+            if (!payload.code) { setMsg("rbacCreateMsg", "请填写角色编码（英文大写）", false); return; }
             await api("/api/admin/rbac/roles", { method: "POST", body: JSON.stringify(payload) });
-            setMsg("rbacMsg", "角色创建成功");
+            document.getElementById("rbacNewRoleCode").value = "";
+            document.getElementById("rbacNewRoleName").value = "";
+            document.getElementById("rbacNewRoleDesc").value = "";
+            selectRbacPerms("rbac-new-perm-cb", false);
+            setMsg("rbacCreateMsg", "角色及权限创建成功", true);
+            setMsg("rbacMsg", "角色及权限创建成功", true);
             await loadRolesAndPermissions();
-        } catch (e) { setMsg("rbacMsg", e.message, false); }
+        } catch (e) { setMsg("rbacCreateMsg", e.message, false); }
     }
 
-    async function assignRolesToAdmin() {
+    async function assignRolePermissions() {
         try {
-            const adminId = document.getElementById("assignAdminId").value.trim();
-            const ids = parseIds(document.getElementById("assignRoleIds").value.trim());
-            await api(`/api/admin/rbac/admins/${adminId}/roles`, { method: "POST", body: JSON.stringify({ ids }) });
-            setMsg("rbacMsg", "管理员角色分配成功");
-        } catch (e) { setMsg("rbacMsg", e.message, false); }
-    }
-
-    async function assignPermissionsToRole() {
-        try {
-            const roleId = document.getElementById("assignPermRoleId").value.trim();
-            const ids = parseIds(document.getElementById("assignPermIds").value.trim());
+            const roleId = document.getElementById("rbacRoleSelect").value;
+            if (!roleId) { setMsg("rbacAssignPermMsg", "请先选择角色", false); return; }
+            const ids = getSelectedPermIds("rbac-edit-perm-cb");
             await api(`/api/admin/rbac/roles/${roleId}/permissions`, { method: "POST", body: JSON.stringify({ ids }) });
-            setMsg("rbacMsg", "角色权限分配成功");
-        } catch (e) { setMsg("rbacMsg", e.message, false); }
-    }
-
-    async function loadAdminsForAssign() {
-        await loadAdmins();
-        setMsg("rbacMsg", "管理员列表已刷新，可填ID分配角色");
+            setMsg("rbacAssignPermMsg", "权限保存成功", true);
+            setMsg("rbacMsg", "角色权限已更新", true);
+        } catch (e) { setMsg("rbacAssignPermMsg", e.message, false); }
     }
 
     async function loadArtifacts() {
@@ -1594,7 +1991,7 @@
             const data = await api("/api/admin/artifacts");
             document.getElementById("artifactTable").innerHTML =
                 "<tr><th>ID</th><th>名称</th><th>年代</th><th>类型</th><th>材质</th><th>来源</th><th>图谱同步</th><th>操作</th></tr>" +
-                data.map(x => `<tr><td>${x.id}</td><td>${x.name}</td><td>${x.period || ""}</td><td>${x.type || ""}</td><td>${x.material || ""}</td><td>${x.sourceSystem || ""}</td><td>${x.kgSyncStatus}</td><td><button class="btn btn-light" onclick="fillArtifact(${x.id}, '${(x.name || "").replace(/'/g, "\\'")}', '${(x.period || "").replace(/'/g, "\\'")}', '${(x.type || "").replace(/'/g, "\\'")}', '${(x.material || "").replace(/'/g, "\\'")}', '${(x.imageUrl || "").replace(/'/g, "\\'")}', '${(x.sourceSystem || "").replace(/'/g, "\\'")}', '${(x.kgSyncStatus || "").replace(/'/g, "\\'")}')">编辑</button></td></tr>`).join("");
+                data.map(x => `<tr><td>${escapeHtml(x.id || x.artifactId || "")}</td><td>${escapeHtml(x.name || x.title || "")}</td><td>${escapeHtml(x.period || "")}</td><td>${escapeHtml(x.type || "")}</td><td>${escapeHtml(x.material || "")}</td><td>${escapeHtml(x.sourceSystem || "")}</td><td>${escapeHtml(x.kgSyncStatus || "")}</td><td><button class="btn btn-light" onclick="fillArtifact('${String(x.id || x.artifactId || "").replace(/'/g, "\\'")}', '${String(x.name || x.title || "").replace(/'/g, "\\'")}', '${String(x.period || "").replace(/'/g, "\\'")}', '${String(x.type || "").replace(/'/g, "\\'")}', '${String(x.material || "").replace(/'/g, "\\'")}', '${String(x.imageUrl || "").replace(/'/g, "\\'")}', '${String(x.sourceSystem || "").replace(/'/g, "\\'")}', '${String(x.kgSyncStatus || "").replace(/'/g, "\\'")}')">编辑</button></td></tr>`).join("");
             setMsg("artifactMsg", "文物列表加载成功");
         } catch (e) { setMsg("artifactMsg", e.message, false); }
     }
@@ -1625,7 +2022,7 @@
                 kgSyncStatus: document.getElementById("artifactKgStatus").value.trim()
             };
             if (id) {
-                await api(`/api/admin/artifacts/${id}`, { method: "PUT", body: JSON.stringify(payload) });
+                await api(`/api/admin/artifacts/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(payload) });
             } else {
                 await api("/api/admin/artifacts", { method: "POST", body: JSON.stringify(payload) });
             }
@@ -1897,10 +2294,11 @@
     function backupTableZhName(tableName) {
         const m = {
             admin_users: "后台管理员",
-            platform_users: "平台用户",
-            unified_users: "统一用户主表",
-            unified_user_behaviors: "统一用户行为记录",
-            unified_user_permission_audit: "统一用户权限审计",
+            users: "前台用户",
+            user_behaviors: "用户行为记录",
+            user_permission_audit: "用户权限审计",
+            admin_role_permission_audit: "角色权限变更审计",
+            restore_logs: "数据恢复日志",
             user_behavior_records: "平台用户行为记录",
             review_content: "内容审核数据",
             review_strategy_config: "自动审核策略",
@@ -2015,27 +2413,36 @@
         } catch (e) { setMsg("backupMsg", e.message, false); }
     }
 
-    function setMenuByRole(role) {
-        const pages = {
-            SUPER_ADMIN: ["dashboardPage", "adminPage", "rbacPage", "userPage", "reviewPage", "artifactPage", "kgPage", "backupPage", "integrationPage", "logPage"],
-            DATA_ADMIN: ["artifactPage", "kgPage"],
-            CONTENT_REVIEWER: ["dashboardPage", "reviewPage"]
+    function setMenuByPermissions(permissions, role) {
+        const permSet = new Set(permissions || []);
+        const pagePermMap = {
+            dashboardPage: ["STATS_VIEW"],
+            adminPage: ["ADMIN_MANAGE"],
+            rbacPage: ["ROLE_VIEW", "PERMISSION_ASSIGN", "ROLE_CREATE"],
+            userPage: ["USER_VIEW"],
+            reviewPage: ["REVIEW_VIEW", "REVIEW_ACTION"],
+            artifactPage: ["ARTIFACT_VIEW"],
+            kgPage: ["ARTIFACT_VIEW"],
+            backupPage: ["BACKUP_MANAGE"],
+            integrationPage: ["ARTIFACT_VIEW"],
+            logPage: ["LOG_VIEW"]
         };
-        const allow = new Set(pages[role] || ["dashboardPage", "logPage"]);
         document.querySelectorAll(".menu-btn").forEach(btn => {
             const p = btn.getAttribute("data-page");
             if (!p) { btn.style.display = "block"; return; }
-            btn.style.display = allow.has(p) ? "block" : "none";
+            const required = pagePermMap[p] || [];
+            const show = required.length === 0 || required.some(code => permSet.has(code));
+            btn.style.display = show ? "block" : "none";
         });
-        const sensitiveMenuBtn = document.getElementById("sensitiveMenuBtn");
-        const reviewStatsMenuBtn = document.getElementById("reviewStatsMenuBtn");
-        if (sensitiveMenuBtn) sensitiveMenuBtn.style.display = role === "CONTENT_REVIEWER" ? "block" : "none";
-        if (reviewStatsMenuBtn) reviewStatsMenuBtn.style.display = role === "CONTENT_REVIEWER" ? "block" : "none";
         const switcher = document.getElementById("reviewSectionSwitcher");
-        if (switcher) switcher.style.display = role === "SUPER_ADMIN" ? "flex" : "none";
+        if (switcher) switcher.style.display = permSet.has("ROLE_VIEW") || role === "SUPER_ADMIN" ? "flex" : "none";
         const strategyPanel = document.getElementById("strategyLowMaxScore")?.closest(".panel");
-        if (strategyPanel) strategyPanel.style.display = (role === "SUPER_ADMIN" || role === "CONTENT_REVIEWER") ? "block" : "none";
+        if (strategyPanel) strategyPanel.style.display = permSet.has("REVIEW_ACTION") ? "block" : "none";
         ensureDefaultPageVisible();
+    }
+
+    function setMenuByRole(role) {
+        setMenuByPermissions(currentPermissions, role);
     }
 
     async function loadReviewContents() {

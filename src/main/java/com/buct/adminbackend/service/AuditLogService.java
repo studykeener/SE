@@ -14,11 +14,13 @@ public class AuditLogService {
     private final LoginLogRepository loginLogRepository;
     private final DataChangeLogRepository dataChangeLogRepository;
 
-    public void logLogin(String username, String result, String ipAddress) {
+    public void logLogin(String username, String result, String ipAddress, String userType, Long userId) {
         LoginLog log = new LoginLog();
         log.setUsername(username);
         log.setResult(result);
         log.setIpAddress(ipAddress);
+        log.setUserType(userType == null ? "ADMIN" : userType);
+        log.setUserId(userId);
         loginLogRepository.save(log);
     }
 

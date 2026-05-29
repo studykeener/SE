@@ -7,6 +7,7 @@ import com.buct.adminbackend.dto.IntegrationCallResult;
 import com.buct.adminbackend.service.IntegrationProxyService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import com.buct.adminbackend.security.PermissionCodes;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,7 +23,7 @@ public class IntegrationController {
     private final IntegrationProxyService integrationProxyService;
 
     @GetMapping("/endpoints")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.ARTIFACT_VIEW + "')")
     public ApiResponse<Map<String, Object>> endpoints() {
         Map<String, Object> data = new HashMap<>();
         data.put("description", "统一通过本后台代理调用其他子系统标准 API，不直接修改对方数据库");
@@ -43,7 +44,7 @@ public class IntegrationController {
     }
 
     @GetMapping("/status")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.ARTIFACT_VIEW + "')")
     public ApiResponse<Map<String, Object>> status() {
         Map<String, Object> data = new HashMap<>();
         data.put("mode", integrationProperties.getMode());
@@ -56,25 +57,25 @@ public class IntegrationController {
     }
 
     @GetMapping("/proxy/users")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.ARTIFACT_VIEW + "')")
     public ApiResponse<IntegrationCallResult> proxyUsers() {
         return ApiResponse.ok(integrationProxyService.proxyGetUsers());
     }
 
     @GetMapping("/proxy/artifacts")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.ARTIFACT_VIEW + "')")
     public ApiResponse<IntegrationCallResult> proxyArtifacts() {
         return ApiResponse.ok(integrationProxyService.proxyGetArtifacts());
     }
 
     @PostMapping("/proxy/review")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN','CONTENT_REVIEWER')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.REVIEW_ACTION + "')")
     public ApiResponse<IntegrationCallResult> proxyReview(@RequestBody Map<String, Object> body) {
         return ApiResponse.ok(integrationProxyService.proxyPostReviewResult(body));
     }
 
     @PostMapping("/proxy/forward")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.ARTIFACT_VIEW + "')")
     public ApiResponse<IntegrationCallResult> proxyForward(@Valid @RequestBody ForwardRequest request) {
         return ApiResponse.ok(integrationProxyService.forward(
                 request.system(),

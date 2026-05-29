@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.time.LocalDateTime;
+
 @Getter
 @Setter
 @Entity
@@ -20,6 +22,15 @@ public class PermissionDefinition {
     @Column(nullable = false, length = 120)
     private String name;
 
+    @Column(nullable = false, length = 32)
+    private String module;
+
+    @Column(nullable = false, length = 32)
+    private String action;
+
     @Column(length = 300)
     private String description;
+
+    @Column(name = "created_at", nullable = false)
+    private LocalDateTime createdAt = LocalDateTime.now();
 }

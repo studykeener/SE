@@ -14,6 +14,7 @@ import com.buct.adminbackend.enums.ReviewStatus;
 import com.buct.adminbackend.enums.RoleType;
 import com.buct.adminbackend.enums.SensitiveWordLevel;
 import com.buct.adminbackend.repository.AdminUserRepository;
+import com.buct.adminbackend.repository.RoleDefinitionRepository;
 import com.buct.adminbackend.repository.ReviewContentRepository;
 import com.buct.adminbackend.repository.ReviewStrategyConfigRepository;
 import com.buct.adminbackend.repository.SensitiveWordRepository;
@@ -25,6 +26,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.format.annotation.DateTimeFormat;
+import com.buct.adminbackend.security.PermissionCodes;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.util.StringUtils;
@@ -47,13 +49,14 @@ public class ReviewController {
 
     private final ReviewContentRepository reviewContentRepository;
     private final AdminUserRepository adminUserRepository;
+    private final RoleDefinitionRepository roleDefinitionRepository;
     private final SensitiveWordRepository sensitiveWordRepository;
     private final ReviewStrategyConfigRepository reviewStrategyConfigRepository;
     private final OperationLogRepository operationLogRepository;
     private final OperationLogService operationLogService;
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','CONTENT_REVIEWER')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.REVIEW_VIEW + "')")
     public ApiResponse<List<ReviewContent>> list(
             @RequestParam(required = false) ReviewStatus status,
             @RequestParam(required = false) ContentType contentType,
@@ -80,7 +83,7 @@ public class ReviewController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','CONTENT_REVIEWER')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.REVIEW_VIEW + "')")
     public ApiResponse<ReviewContent> detail(@PathVariable Long id) {
         ReviewContent content = reviewContentRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("审核内容不存在"));
@@ -88,7 +91,7 @@ public class ReviewController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','CONTENT_REVIEWER','DATA_ADMIN')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.REVIEW_ACTION + "')")
     public ApiResponse<ReviewContent> create(@Valid @RequestBody CreateReviewContentRequest request, Authentication authentication) {
         ReviewContent content = new ReviewContent();
         content.setContentType(request.contentType());
@@ -108,7 +111,7 @@ public class ReviewController {
     }
 
     @PatchMapping("/{id}/action")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','CONTENT_REVIEWER')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.REVIEW_ACTION + "')")
     public ApiResponse<ReviewContent> review(@PathVariable Long id,
                                              @Valid @RequestBody ReviewActionRequest request,
                                              Authentication authentication) {
@@ -139,7 +142,7 @@ public class ReviewController {
     }
 
     @PatchMapping("/batch/action")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','CONTENT_REVIEWER')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.REVIEW_ACTION + "')")
     public ApiResponse<Void> batchReview(@RequestParam List<Long> ids,
                                          @Valid @RequestBody ReviewActionRequest request,
                                          Authentication authentication) {
@@ -171,7 +174,7 @@ public class ReviewController {
     }
 
     @GetMapping("/sensitive-words")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','CONTENT_REVIEWER')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.REVIEW_VIEW + "')")
     public ApiResponse<List<SensitiveWord>> listSensitiveWords(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) SensitiveWordLevel level) {
@@ -197,7 +200,7 @@ public class ReviewController {
     }
 
     @PostMapping("/sensitive-words")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','CONTENT_REVIEWER')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.REVIEW_ACTION + "')")
     public ApiResponse<SensitiveWord> createSensitiveWord(
             @RequestParam String word,
             @RequestParam(required = false) SensitiveWordLevel level,
@@ -216,7 +219,7 @@ public class ReviewController {
     }
 
     @PatchMapping("/sensitive-words/{id}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','CONTENT_REVIEWER')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.REVIEW_ACTION + "')")
     public ApiResponse<SensitiveWord> updateSensitiveWordStatus(
             @PathVariable Long id,
             @RequestParam(required = false) Boolean enabled,
@@ -240,7 +243,7 @@ public class ReviewController {
     }
 
     @DeleteMapping("/sensitive-words/{id}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','CONTENT_REVIEWER')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.REVIEW_ACTION + "')")
     public ApiResponse<Void> deleteSensitiveWord(@PathVariable Long id, Authentication authentication) {
         SensitiveWord sw = sensitiveWordRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("敏感词不存在"));
@@ -250,7 +253,7 @@ public class ReviewController {
     }
 
     @GetMapping("/sensitive-words/logs")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','CONTENT_REVIEWER')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.REVIEW_VIEW + "')")
     public ApiResponse<List<OperationLog>> sensitiveWordLogs() {
         List<OperationLog> logs = operationLogRepository.findByOperationTypeIn(
                 List.of("CREATE_SENSITIVE_WORD", "UPDATE_SENSITIVE_WORD", "DELETE_SENSITIVE_WORD"),
@@ -259,7 +262,7 @@ public class ReviewController {
     }
 
     @GetMapping("/strategy/logs")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','CONTENT_REVIEWER')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.REVIEW_VIEW + "')")
     public ApiResponse<List<OperationLog>> reviewStrategyLogs() {
         List<OperationLog> logs = operationLogRepository.findByOperationTypeIn(
                 List.of("UPDATE_REVIEW_STRATEGY"),
@@ -268,13 +271,13 @@ public class ReviewController {
     }
 
     @GetMapping("/strategy")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','CONTENT_REVIEWER')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.REVIEW_VIEW + "')")
     public ApiResponse<ReviewStrategyConfig> getStrategy() {
         return ApiResponse.ok(getOrCreateStrategy());
     }
 
     @PutMapping("/strategy")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','CONTENT_REVIEWER')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.REVIEW_ACTION + "')")
     public ApiResponse<ReviewStrategyConfig> updateStrategy(@RequestBody ReviewStrategyConfig request, Authentication authentication) {
         if (request.getLowRiskMaxScore() == null || request.getMediumRiskMaxScore() == null) {
             throw new IllegalArgumentException("风险阈值不能为空");
@@ -295,7 +298,7 @@ public class ReviewController {
     }
 
     @GetMapping("/stats")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','CONTENT_REVIEWER')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.REVIEW_VIEW + "')")
     public ApiResponse<Map<String, Object>> stats(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to) {
@@ -304,8 +307,11 @@ public class ReviewController {
         if (start.isAfter(end)) {
             throw new IllegalArgumentException("统计开始时间不能晚于结束时间");
         }
+        Long contentReviewerRoleId = roleDefinitionRepository.findByCode(RoleType.CONTENT_REVIEWER.name())
+                .map(r -> r.getId())
+                .orElse(-1L);
         Set<String> contentReviewerUsernames = adminUserRepository.findAll().stream()
-                .filter(u -> u.getRole() == RoleType.CONTENT_REVIEWER)
+                .filter(u -> contentReviewerRoleId.equals(u.getRoleId()))
                 .map(AdminUser::getUsername)
                 .collect(Collectors.toSet());
         List<ReviewContent> reviewed = reviewContentRepository.findByReviewTimeBetweenOrderByReviewTimeDesc(start, end);
