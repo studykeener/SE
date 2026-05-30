@@ -40,6 +40,8 @@ public class BackupService {
     private final BackupTaskConfigRepository backupTaskConfigRepository;
     private final RestoreLogRepository restoreLogRepository;
     private final AdminUserRepository adminUserRepository;
+    private final RolePermissionService rolePermissionService;
+    private final OperationLogService operationLogService;
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
     private final SystemLogService systemLogService;
@@ -141,7 +143,35 @@ public class BackupService {
         }
     }
 
-    public void restore(Long id, String confirmText, String operator) {
+    public List<Map<String, Object>> listRestoreLogs() {
+        return restoreLogRepository.findAllByOrderByStartedAtDesc().stream()
+                .map(this::mapRestoreLogRow)
+                .toList();
+    }
+
+    public boolean canRestore(String operator) {
+        if (!StringUtils.hasText(operator)) {
+            return false;
+        }
+        return adminUserRepository.findByUsername(operator)
+                .map(u -> "SUPER_ADMIN".equals(rolePermissionService.getRoleCodeByAdminId(u.getId())))
+                .orElse(false);
+    }
+
+    public String getOperatorRoleCode(String operator) {
+        if (!StringUtils.hasText(operator)) {
+            return "";
+        }
+        return adminUserRepository.findByUsername(operator)
+                .map(u -> rolePermissionService.getRoleCodeByAdminId(u.getId()))
+                .orElse("");
+    }
+
+    public void restore(Long id, boolean acknowledged, String confirmText, String operator) {
+        assertSuperAdmin(operator);
+        if (!acknowledged) {
+            throw new IllegalArgumentException("请先完成第一步确认（acknowledged=true）");
+        }
         if (!"CONFIRM_RESTORE".equals(confirmText)) {
             throw new IllegalArgumentException("恢复确认文本错误，请输入 CONFIRM_RESTORE");
         }
@@ -183,13 +213,68 @@ public class BackupService {
             restoreLog.setFinishedAt(LocalDateTime.now());
             restoreLogRepository.save(restoreLog);
             systemLogService.info("RESTORE", "BackupService", "restoreId=" + restoreLog.getId() + ", backupId=" + id);
+            logRestoreOperation(operator, restoreLog.getOperatorId(), id, r, restoreLog.getId(), null);
         } catch (Exception e) {
             restoreLog.setStatus("FAILED");
             restoreLog.setErrorMessage(e.getMessage());
             restoreLog.setFinishedAt(LocalDateTime.now());
             restoreLogRepository.save(restoreLog);
+            logRestoreOperation(operator, restoreLog.getOperatorId(), id, r, restoreLog.getId(), e.getMessage());
             throw new IllegalStateException("恢复失败: " + e.getMessage(), e);
         }
+    }
+
+    private void logRestoreOperation(String operator, Long operatorId, Long backupId, BackupRecord record,
+                                   Long restoreLogId, String error) {
+        try {
+            Map<String, Object> after = new LinkedHashMap<>();
+            after.put("backupId", backupId);
+            after.put("backupType", record.getBackupType());
+            after.put("tableScope", record.getTableScope());
+            after.put("restoreLogId", restoreLogId);
+            if (error != null) {
+                after.put("error", error);
+            }
+            String afterJson = objectMapper.writeValueAsString(after);
+            String details = error == null
+                    ? "数据库恢复成功"
+                    : "数据库恢复失败: " + error;
+            operationLogService.logChange(operator, operatorId, "BACKUP", "RESTORE_BACKUP",
+                    "backup_records", String.valueOf(backupId), null, afterJson, details);
+        } catch (Exception logEx) {
+            systemLogService.error("RESTORE_LOG_FAIL", "BackupService",
+                    "restoreLogId=" + restoreLogId + ", error=" + logEx.getMessage(), logEx);
+        }
+    }
+
+    private void assertSuperAdmin(String operator) {
+        if (!canRestore(operator)) {
+            throw new IllegalArgumentException("仅超级管理员可执行数据恢复");
+        }
+    }
+
+    private Map<String, Object> mapRestoreLogRow(RestoreLog log) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("id", log.getId());
+        row.put("backupRecordId", log.getBackupRecordId());
+        row.put("operatorId", log.getOperatorId());
+        row.put("operator", resolveOperatorName(log.getOperatorId()));
+        row.put("confirmText", log.getConfirmText());
+        row.put("confirmedAt", log.getConfirmedAt());
+        row.put("restoreScope", log.getRestoreScope());
+        row.put("tableScope", log.getTableScope());
+        row.put("status", log.getStatus());
+        row.put("errorMessage", log.getErrorMessage());
+        row.put("startedAt", log.getStartedAt());
+        row.put("finishedAt", log.getFinishedAt());
+        return row;
+    }
+
+    private String resolveOperatorName(Long operatorId) {
+        if (operatorId == null || operatorId <= 0) {
+            return "system";
+        }
+        return adminUserRepository.findById(operatorId).map(u -> u.getUsername()).orElse("id:" + operatorId);
     }
 
     private Long resolveOperatorId(String operatorUsername) {

@@ -18,6 +18,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/admin/backup")
@@ -54,12 +55,29 @@ public class BackupController {
                 .body(bytes);
     }
 
+    @GetMapping("/restore-eligible")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.BACKUP_MANAGE + "')")
+    public ApiResponse<Map<String, Object>> restoreEligible(Authentication authentication) {
+        String username = authentication.getName();
+        String roleCode = backupService.getOperatorRoleCode(username);
+        return ApiResponse.ok(Map.of(
+                "eligible", backupService.canRestore(username),
+                "roleCode", roleCode == null ? "" : roleCode
+        ));
+    }
+
+    @GetMapping("/restore-logs")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.BACKUP_MANAGE + "')")
+    public ApiResponse<List<Map<String, Object>>> listRestoreLogs() {
+        return ApiResponse.ok(backupService.listRestoreLogs());
+    }
+
     @PostMapping("/restore/{id}")
     @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.BACKUP_MANAGE + "')")
     public ApiResponse<Void> restore(@PathVariable Long id,
                                      @Valid @RequestBody RestoreBackupRequest request,
                                      Authentication authentication) {
-        backupService.restore(id, request.confirmText(), authentication.getName());
+        backupService.restore(id, Boolean.TRUE.equals(request.acknowledged()), request.confirmText(), authentication.getName());
         return ApiResponse.ok("恢复成功", null);
     }
 

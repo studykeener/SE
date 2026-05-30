@@ -130,7 +130,7 @@ public class Artifact {
         this.title = name;
     }
 
-    @JsonIgnore
+    @JsonProperty("museumId")
     public Integer getMuseumId() {
         return id == null ? null : id.getMuseumId();
     }
@@ -142,7 +142,7 @@ public class Artifact {
         id.setMuseumId(museumId);
     }
 
-    @JsonIgnore
+    @JsonProperty("objectId")
     public String getObjectId() {
         return id == null ? null : id.getObjectId();
     }

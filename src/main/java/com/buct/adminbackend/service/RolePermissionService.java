@@ -7,8 +7,12 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -24,12 +28,13 @@ public class RolePermissionService {
     private final AdminRolePermissionAuditRepository adminRolePermissionAuditRepository;
     private final OperationLogService operationLogService;
     private final ObjectMapper objectMapper;
+    private final PlatformTransactionManager transactionManager;
 
     @PostConstruct
     @Transactional
     public void initDefaults() {
         initRole("SUPER_ADMIN", "超级管理员", "系统最高权限", true);
-        initRole("CONTENT_REVIEWER", "内容审核员", "负责审核内容", true);
+        initRole("CONTENT_REVIEWER", "内容审核员", "仅负责内容审核，无法操作用户数据与系统配置", true);
         initRole("DATA_ADMIN", "数据管理员", "负责数据管理", true);
 
         initPermission(PermissionCodes.USER_VIEW, "查看用户", "USER", "VIEW", "查看前台用户");
@@ -61,12 +66,17 @@ public class RolePermissionService {
         syncLegacyAdminRoles();
     }
 
+    /** 应用就绪后校正内置角色权限（delete/insert 必须在事务中执行） */
+    @EventListener(ApplicationReadyEvent.class)
+    public void syncSystemBuiltinRolePermissionsOnStartup() {
+        syncSystemBuiltinRolePermissions();
+    }
+
     private void assignDefaultRolePermissions() {
         Map<String, List<String>> matrix = Map.of(
                 "SUPER_ADMIN", List.of(),
                 "CONTENT_REVIEWER", List.of(
-                        PermissionCodes.REVIEW_VIEW, PermissionCodes.REVIEW_ACTION,
-                        PermissionCodes.USER_VIEW, PermissionCodes.USER_BAN, PermissionCodes.STATS_VIEW
+                        PermissionCodes.REVIEW_VIEW, PermissionCodes.REVIEW_ACTION
                 ),
                 "DATA_ADMIN", List.of(
                         PermissionCodes.ARTIFACT_VIEW, PermissionCodes.ARTIFACT_EDIT,
@@ -86,6 +96,27 @@ public class RolePermissionService {
                 assignRolePermissions(role.getId(), permIds, "system", null, false);
             });
         }
+    }
+
+    /** 系统内置角色权限以代码为准，启动时校正（避免历史库中权限残留） */
+    private void syncSystemBuiltinRolePermissions() {
+        syncRolePermissions("CONTENT_REVIEWER", List.of(
+                PermissionCodes.REVIEW_VIEW, PermissionCodes.REVIEW_ACTION
+        ));
+    }
+
+    private void syncRolePermissions(String roleCode, List<String> expectedCodes) {
+        roleDefinitionRepository.findByCode(roleCode).ifPresent(role -> {
+            List<String> current = resolvePermissionCodesByRoleId(role.getId());
+            List<String> expected = expectedCodes.stream().sorted().toList();
+            if (current.equals(expected)) {
+                return;
+            }
+            Long roleId = role.getId();
+            List<Long> permIds = resolvePermissionIds(expectedCodes);
+            TransactionTemplate tx = new TransactionTemplate(transactionManager);
+            tx.executeWithoutResult(status -> assignRolePermissions(roleId, permIds, "system", null, false));
+        });
     }
 
     private void ensureSuperAdminHasAllPermissions() {

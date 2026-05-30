@@ -1,0 +1,4 @@
+"artifactId","museumId","objectId","name","period","type","material","description","imageUrl","detailUrl","sourceSystem","kgSyncStatus"
+"entity:artifact:1:TEST-CSV-001","1","TEST-CSV-001","青花缠枝莲纹瓷盘","明代","瓷器","陶瓷","导入测试数据：明代青花瓷盘，用于验证中文与 CSV 格式。","https://example.com/images/test-csv-001.jpg","https://example.com/artifacts/test-csv-001","smithsonian","PENDING"
+"entity:artifact:2:TEST-CSV-002","2","TEST-CSV-002","青铜爵","商代","青铜器","青铜","导入测试数据：商代青铜酒器，哈佛馆藏示例。","https://example.com/images/test-csv-002.jpg","https://example.com/artifacts/test-csv-002","harvard","PENDING"
+"entity:artifact:3:TEST-CSV-003","3","TEST-CSV-003","玉雕观音像","清代","玉器","和田玉","导入测试数据：清代玉雕，波士顿美术博物馆示例。","https://example.com/images/test-csv-003.jpg","https://example.com/artifacts/test-csv-003","mfa","SYNCED"

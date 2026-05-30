@@ -4,15 +4,19 @@ import com.buct.adminbackend.common.ApiResponse;
 import com.buct.adminbackend.dto.*;
 import com.buct.adminbackend.entity.AdminUser;
 import com.buct.adminbackend.entity.User;
-import com.buct.adminbackend.entity.UserBehavior;
 import com.buct.adminbackend.entity.UserPermissionAudit;
 import com.buct.adminbackend.enums.UserStatus;
+import com.buct.adminbackend.repository.AdminUserRepository;
+import com.buct.adminbackend.repository.CommentRepository;
 import com.buct.adminbackend.repository.UserBehaviorRepository;
+import com.buct.adminbackend.repository.UserFavoriteRepository;
+import com.buct.adminbackend.repository.UserLikeRepository;
 import com.buct.adminbackend.repository.UserPermissionAuditRepository;
 import com.buct.adminbackend.repository.UserRepository;
-import com.buct.adminbackend.repository.AdminUserRepository;
+import com.buct.adminbackend.repository.UserUploadPhotoRepository;
 import com.buct.adminbackend.service.AuditLogService;
 import com.buct.adminbackend.service.OperationLogService;
+import com.buct.adminbackend.service.UserActivityTraceService;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -43,9 +47,14 @@ public class UnifiedUserController {
     private final UserRepository userRepository;
     private final UserBehaviorRepository userBehaviorRepository;
     private final UserPermissionAuditRepository userPermissionAuditRepository;
+    private final CommentRepository commentRepository;
+    private final UserUploadPhotoRepository userUploadPhotoRepository;
+    private final UserFavoriteRepository userFavoriteRepository;
+    private final UserLikeRepository userLikeRepository;
     private final AdminUserRepository adminUserRepository;
     private final OperationLogService operationLogService;
     private final AuditLogService auditLogService;
+    private final UserActivityTraceService userActivityTraceService;
     private final PasswordEncoder passwordEncoder;
 
     @GetMapping
@@ -147,9 +156,9 @@ public class UnifiedUserController {
     public ApiResponse<Void> delete(@PathVariable Long id, Authentication authentication) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("用户不存在"));
-        userBehaviorRepository.deleteByUserId(id);
+        purgeUserRelatedData(id);
         userRepository.deleteById(id);
-        operationLogService.log(authentication.getName(), "DELETE_USER", String.valueOf(id), "删除前台用户");
+        operationLogService.log(authentication.getName(), "DELETE_USER", String.valueOf(id), "删除前台用户及关联内容");
         auditLogService.logDataChange(authentication.getName(), "DELETE", "USER", String.valueOf(id), user.getUsername());
         return ApiResponse.ok("删除成功", null);
     }
@@ -160,7 +169,7 @@ public class UnifiedUserController {
     public ApiResponse<Void> deleteBatch(@Valid @RequestBody BatchUserIdsRequest request, Authentication authentication) {
         for (Long id : request.ids()) {
             userRepository.findById(id).ifPresent(u -> {
-                userBehaviorRepository.deleteByUserId(id);
+                purgeUserRelatedData(id);
                 userRepository.deleteById(id);
             });
         }
@@ -230,7 +239,7 @@ public class UnifiedUserController {
 
     @GetMapping("/{id}/behaviors")
     @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.USER_VIEW + "')")
-    public ApiResponse<Page<UserBehavior>> behaviors(
+    public ApiResponse<Page<UserActivityTraceItem>> behaviors(
             @PathVariable Long id,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
@@ -238,29 +247,10 @@ public class UnifiedUserController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to) {
         userRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("用户不存在"));
-        Specification<UserBehavior> spec = buildBehaviorFilterSpec(id, type, from, to);
-        Page<UserBehavior> p = userBehaviorRepository.findAll(spec,
-                PageRequest.of(page, Math.min(Math.max(size, 1), 200), Sort.by(Sort.Direction.DESC, "behaviorTime")));
+        Page<UserActivityTraceItem> p = userActivityTraceService.list(
+                id, type, from, to,
+                PageRequest.of(page, Math.min(Math.max(size, 1), 200)));
         return ApiResponse.ok(p);
-    }
-
-    @PostMapping("/{id}/behaviors")
-    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.USER_VIEW + "')")
-    public ApiResponse<UserBehavior> createBehavior(@PathVariable Long id,
-                                                    @Valid @RequestBody CreateUnifiedUserBehaviorRequest request,
-                                                    Authentication authentication) {
-        userRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("用户不存在"));
-        UserBehavior b = new UserBehavior();
-        b.setUserId(id);
-        b.setBehaviorType(normalizeText(request.behaviorType()).toUpperCase());
-        b.setBehaviorContent(normalizeNullable(request.behaviorContent()));
-        b.setSourceSystem(normalizeUserSource(request.sourceSystem()));
-        b.setSourceRecordId(normalizeNullable(request.sourceRecordId()));
-        b.setBehaviorTime(request.behaviorTime() == null ? LocalDateTime.now() : request.behaviorTime());
-        UserBehavior saved = userBehaviorRepository.save(b);
-        operationLogService.log(authentication.getName(), "CREATE_USER_BEHAVIOR", String.valueOf(saved.getId()), "userId=" + id);
-        auditLogService.logDataChange(authentication.getName(), "CREATE", "USER_BEHAVIOR", String.valueOf(saved.getId()), "userId=" + id);
-        return ApiResponse.ok("创建成功", saved);
     }
 
     @GetMapping("/{id}/permission-audit")
@@ -329,6 +319,15 @@ public class UnifiedUserController {
         return adminUserRepository.findByUsername(authentication.getName()).map(AdminUser::getId).orElse(null);
     }
 
+    /** 删除用户前清理共用表中的评论、上传、收藏、点赞及子系统5侧记录 */
+    private void purgeUserRelatedData(Long userId) {
+        commentRepository.deleteByUserId(userId);
+        userUploadPhotoRepository.deleteByUserId(userId);
+        userFavoriteRepository.deleteByUserId(userId);
+        userLikeRepository.deleteByUserId(userId);
+        userBehaviorRepository.deleteByUserId(userId);
+    }
+
     private static Integer statusCode(UserStatus status) {
         if (status == null) return null;
         return status == UserStatus.ENABLED ? 1 : 0;
@@ -358,27 +357,6 @@ public class UnifiedUserController {
                 preds.add(cb.lessThanOrEqualTo(root.get("registerTime"), createdTo));
             }
             if (preds.isEmpty()) return cb.conjunction();
-            return cb.and(preds.toArray(new Predicate[0]));
-        };
-    }
-
-    private static Specification<UserBehavior> buildBehaviorFilterSpec(
-            Long userId,
-            String type,
-            LocalDateTime from,
-            LocalDateTime to) {
-        return (root, q, cb) -> {
-            List<Predicate> preds = new ArrayList<>();
-            preds.add(cb.equal(root.get("userId"), userId));
-            if (StringUtils.hasText(type)) {
-                preds.add(cb.equal(cb.upper(root.get("behaviorType")), type.trim().toUpperCase()));
-            }
-            if (from != null) {
-                preds.add(cb.greaterThanOrEqualTo(root.get("behaviorTime"), from));
-            }
-            if (to != null) {
-                preds.add(cb.lessThanOrEqualTo(root.get("behaviorTime"), to));
-            }
             return cb.and(preds.toArray(new Predicate[0]));
         };
     }

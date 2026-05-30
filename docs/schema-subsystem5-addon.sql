@@ -305,3 +305,5 @@ CREATE TABLE IF NOT EXISTS `data_change_logs` (
 
 -- 追加完成。本子系统向最终库新增内容：
 --   ALTER user 表 + 17 张新表（不修改、不删除其他子系统已有表）
+--
+-- 若 login_logs 已存在但无 source_system，请另执行 docs/migration-login-source-system.sql

@@ -1,32 +1,34 @@
 package com.buct.adminbackend.controller;
 
 import com.buct.adminbackend.common.ApiResponse;
+import com.buct.adminbackend.dto.BatchReviewRequest;
 import com.buct.adminbackend.dto.CreateReviewContentRequest;
 import com.buct.adminbackend.dto.ReviewActionRequest;
-import com.buct.adminbackend.entity.ReviewStrategyConfig;
-import com.buct.adminbackend.entity.ReviewContent;
+import com.buct.adminbackend.dto.ReviewQueueItemResponse;
+import com.buct.adminbackend.dto.ReviewTargetRef;
 import com.buct.adminbackend.entity.AdminUser;
-import com.buct.adminbackend.entity.SensitiveWord;
 import com.buct.adminbackend.entity.OperationLog;
+import com.buct.adminbackend.entity.ReviewStrategyConfig;
+import com.buct.adminbackend.entity.SensitiveWord;
 import com.buct.adminbackend.enums.AutoReviewAction;
 import com.buct.adminbackend.enums.ContentType;
 import com.buct.adminbackend.enums.ReviewStatus;
 import com.buct.adminbackend.enums.RoleType;
 import com.buct.adminbackend.enums.SensitiveWordLevel;
 import com.buct.adminbackend.repository.AdminUserRepository;
-import com.buct.adminbackend.repository.RoleDefinitionRepository;
-import com.buct.adminbackend.repository.ReviewContentRepository;
-import com.buct.adminbackend.repository.ReviewStrategyConfigRepository;
-import com.buct.adminbackend.repository.SensitiveWordRepository;
 import com.buct.adminbackend.repository.OperationLogRepository;
+import com.buct.adminbackend.repository.ReviewStrategyConfigRepository;
+import com.buct.adminbackend.repository.RoleDefinitionRepository;
+import com.buct.adminbackend.repository.SensitiveWordRepository;
+import com.buct.adminbackend.security.PermissionCodes;
 import com.buct.adminbackend.service.OperationLogService;
+import com.buct.adminbackend.service.ReviewQueueService;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.format.annotation.DateTimeFormat;
-import com.buct.adminbackend.security.PermissionCodes;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.util.StringUtils;
@@ -34,12 +36,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @RestController
@@ -47,7 +44,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ReviewController {
 
-    private final ReviewContentRepository reviewContentRepository;
+    private final ReviewQueueService reviewQueueService;
     private final AdminUserRepository adminUserRepository;
     private final RoleDefinitionRepository roleDefinitionRepository;
     private final SensitiveWordRepository sensitiveWordRepository;
@@ -57,7 +54,7 @@ public class ReviewController {
 
     @GetMapping
     @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.REVIEW_VIEW + "')")
-    public ApiResponse<List<ReviewContent>> list(
+    public ApiResponse<List<ReviewQueueItemResponse>> list(
             @RequestParam(required = false) ReviewStatus status,
             @RequestParam(required = false) ContentType contentType,
             @RequestParam(required = false) ContentType type,
@@ -76,101 +73,76 @@ public class ReviewController {
         ContentType finalType = contentType != null ? contentType : type;
         String finalSource = StringUtils.hasText(sourceSystem) ? sourceSystem : source;
         String finalSubmitter = StringUtils.hasText(submitter) ? submitter : submitterName;
-        Specification<ReviewContent> spec = buildReviewFilterSpec(
-                status, finalType, finalSource, finalSubmitter, keyword, submitFrom, submitTo, riskMin, riskMax);
-        List<ReviewContent> list = reviewContentRepository.findAll(spec, Sort.by(Sort.Direction.DESC, "submitTime"));
-        return ApiResponse.ok(list);
+        return ApiResponse.ok(reviewQueueService.list(
+                status, finalType, finalSource, finalSubmitter, keyword, submitFrom, submitTo, riskMin, riskMax));
     }
 
-    @GetMapping("/{id}")
+    @GetMapping("/{sourceTable}/{id}")
     @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.REVIEW_VIEW + "')")
-    public ApiResponse<ReviewContent> detail(@PathVariable Long id) {
-        ReviewContent content = reviewContentRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("审核内容不存在"));
-        return ApiResponse.ok(content);
+    public ApiResponse<ReviewQueueItemResponse> detail(@PathVariable String sourceTable, @PathVariable Long id) {
+        return ApiResponse.ok(reviewQueueService.getBySource(sourceTable, id));
     }
 
     @PostMapping
     @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.REVIEW_ACTION + "')")
-    public ApiResponse<ReviewContent> create(@Valid @RequestBody CreateReviewContentRequest request, Authentication authentication) {
-        ReviewContent content = new ReviewContent();
-        content.setContentType(request.contentType());
-        content.setSourceSystem(request.sourceSystem());
-        content.setSubmitter(request.submitter());
-        content.setContentText(request.contentText());
-        content.setContentUrl(request.contentUrl());
-        content.setRiskScore(computeRiskScore(content));
-        boolean blocked = applyAutoReview(content);
-        ReviewContent saved = reviewContentRepository.save(content);
-        operationLogService.log(authentication.getName(), "CREATE_REVIEW_CONTENT", String.valueOf(saved.getId()),
-                "新增内容，自动审核结果: " + saved.getReviewStatus());
-        if (blocked) {
-            throw new IllegalArgumentException("内容违规无法发布，请修改后重试");
-        }
+    public ApiResponse<ReviewQueueItemResponse> create(@Valid @RequestBody CreateReviewContentRequest request,
+                                                         Authentication authentication) {
+        ReviewQueueItemResponse saved = reviewQueueService.createTestContent(request);
+        operationLogService.log(authentication.getName(), "CREATE_REVIEW_CONTENT",
+                saved.sourceTable() + ":" + saved.id(),
+                "写入队友表 " + saved.sourceTable() + "，审核状态: " + saved.reviewStatus());
         return ApiResponse.ok("新增成功", saved);
     }
 
-    @PatchMapping("/{id}/action")
+    @PatchMapping("/{sourceTable}/{id}/action")
     @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.REVIEW_ACTION + "')")
-    public ApiResponse<ReviewContent> review(@PathVariable Long id,
-                                             @Valid @RequestBody ReviewActionRequest request,
-                                             Authentication authentication) {
-        if (request.reviewStatus() == ReviewStatus.PENDING) {
-            throw new IllegalArgumentException("审核动作不能设置为 PENDING");
-        }
-        if (request.reviewStatus() == ReviewStatus.REJECTED
-                && (request.rejectReason() == null || request.rejectReason().isBlank())) {
-            throw new IllegalArgumentException("拒绝时必须填写拒绝原因");
-        }
-        ReviewContent content = reviewContentRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("审核内容不存在"));
-        content.setReviewStatus(request.reviewStatus());
-        content.setReviewTime(LocalDateTime.now());
-        content.setReviewer(authentication.getName());
-        if (request.reviewStatus() == ReviewStatus.REJECTED) {
-            content.setRejectReason(request.rejectReason());
-        } else if (request.reviewStatus() == ReviewStatus.RECHECK) {
-            content.setRejectReason(request.rejectReason());
-        } else {
-            content.setRejectReason(null);
-        }
-        content.setAutoReviewed(false);
-        ReviewContent saved = reviewContentRepository.save(content);
-        operationLogService.log(authentication.getName(), "REVIEW_CONTENT", String.valueOf(saved.getId()),
-                "审核结果: " + request.reviewStatus());
+    public ApiResponse<ReviewQueueItemResponse> review(@PathVariable String sourceTable,
+                                                       @PathVariable Long id,
+                                                       @Valid @RequestBody ReviewActionRequest request,
+                                                       Authentication authentication) {
+        Long operatorId = resolveAdminId(authentication);
+        ReviewQueueItemResponse saved = reviewQueueService.review(
+                sourceTable, id, request.reviewStatus(), request.rejectReason(),
+                authentication.getName(), operatorId);
+        operationLogService.log(authentication.getName(), "REVIEW_CONTENT",
+                sourceTable + ":" + id, "审核结果: " + request.reviewStatus());
         return ApiResponse.ok("审核成功", saved);
     }
 
     @PatchMapping("/batch/action")
     @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.REVIEW_ACTION + "')")
-    public ApiResponse<Void> batchReview(@RequestParam List<Long> ids,
-                                         @Valid @RequestBody ReviewActionRequest request,
+    public ApiResponse<Void> batchReview(@Valid @RequestBody BatchReviewRequest request,
                                          Authentication authentication) {
-        if (request.reviewStatus() == ReviewStatus.PENDING) {
-            throw new IllegalArgumentException("审核动作不能设置为 PENDING");
+        Long operatorId = resolveAdminId(authentication);
+        for (var target : request.targets()) {
+            reviewQueueService.review(target.sourceTable(), target.id(), request.reviewStatus(),
+                    request.rejectReason(), authentication.getName(), operatorId);
         }
-        if (request.reviewStatus() == ReviewStatus.REJECTED
-                && (request.rejectReason() == null || request.rejectReason().isBlank())) {
-            throw new IllegalArgumentException("批量拒绝时必须填写拒绝原因");
-        }
-        for (Long id : ids) {
-            reviewContentRepository.findById(id).ifPresent(content -> {
-                content.setReviewStatus(request.reviewStatus());
-                content.setReviewTime(LocalDateTime.now());
-                content.setReviewer(authentication.getName());
-                if (request.reviewStatus() == ReviewStatus.REJECTED) {
-                    content.setRejectReason(request.rejectReason());
-                } else if (request.reviewStatus() == ReviewStatus.RECHECK) {
-                    content.setRejectReason(request.rejectReason());
-                } else {
-                    content.setRejectReason(null);
-                }
-                content.setAutoReviewed(false);
-                reviewContentRepository.save(content);
-            });
-        }
-        operationLogService.log(authentication.getName(), "BATCH_REVIEW_CONTENT", ids.toString(), "审核结果: " + request.reviewStatus());
+        operationLogService.log(authentication.getName(), "BATCH_REVIEW_CONTENT",
+                summarizeBatchTargets(request.targets()),
+                buildBatchReviewDetails(request));
         return ApiResponse.ok("批量审核成功", null);
+    }
+
+    /** operation_target 列最长 100，批量时只记摘要，明细放 details */
+    private static String summarizeBatchTargets(List<ReviewTargetRef> targets) {
+        if (targets == null || targets.isEmpty()) {
+            return "batch:0";
+        }
+        if (targets.size() == 1) {
+            ReviewTargetRef t = targets.get(0);
+            String one = t.sourceTable() + ":" + t.id();
+            return one.length() <= 100 ? one : one.substring(0, 100);
+        }
+        return "batch:" + targets.size() + "条";
+    }
+
+    private static String buildBatchReviewDetails(BatchReviewRequest request) {
+        String ids = request.targets().stream()
+                .map(t -> t.sourceTable() + ":" + t.id())
+                .collect(Collectors.joining(","));
+        String details = "审核结果: " + request.reviewStatus() + "; " + ids;
+        return details.length() <= 1000 ? details : details.substring(0, 997) + "...";
     }
 
     @GetMapping("/sensitive-words")
@@ -278,7 +250,8 @@ public class ReviewController {
 
     @PutMapping("/strategy")
     @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.REVIEW_ACTION + "')")
-    public ApiResponse<ReviewStrategyConfig> updateStrategy(@RequestBody ReviewStrategyConfig request, Authentication authentication) {
+    public ApiResponse<ReviewStrategyConfig> updateStrategy(@RequestBody ReviewStrategyConfig request,
+                                                            Authentication authentication) {
         if (request.getLowRiskMaxScore() == null || request.getMediumRiskMaxScore() == null) {
             throw new IllegalArgumentException("风险阈值不能为空");
         }
@@ -313,26 +286,29 @@ public class ReviewController {
         Set<String> contentReviewerUsernames = adminUserRepository.findAll().stream()
                 .filter(u -> contentReviewerRoleId.equals(u.getRoleId()))
                 .map(AdminUser::getUsername)
-                .collect(Collectors.toSet());
-        List<ReviewContent> reviewed = reviewContentRepository.findByReviewTimeBetweenOrderByReviewTimeDesc(start, end);
+                .collect(java.util.stream.Collectors.toSet());
+        List<ReviewQueueItemResponse> reviewed = reviewQueueService.listReviewedBetween(start, end);
         Map<LocalDate, int[]> daily = new HashMap<>();
         Map<String, Integer> reviewerWorkload = new HashMap<>();
         Map<String, Integer> contentReviewerWorkload = new HashMap<>();
         int approved = 0;
         int rejected = 0;
-        for (ReviewContent x : reviewed) {
-            LocalDate d = x.getReviewTime().toLocalDate();
+        for (ReviewQueueItemResponse x : reviewed) {
+            if (x.reviewTime() == null) {
+                continue;
+            }
+            LocalDate d = x.reviewTime().toLocalDate();
             int[] arr = daily.computeIfAbsent(d, k -> new int[]{0, 0, 0});
             arr[0] += 1;
-            if (x.getReviewStatus() == ReviewStatus.APPROVED) {
+            if (x.reviewStatus() == ReviewStatus.APPROVED) {
                 arr[1] += 1;
                 approved++;
-            } else if (x.getReviewStatus() == ReviewStatus.REJECTED) {
+            } else if (x.reviewStatus() == ReviewStatus.REJECTED) {
                 arr[2] += 1;
                 rejected++;
             }
-            if (StringUtils.hasText(x.getReviewer())) {
-                String name = x.getReviewer();
+            if (StringUtils.hasText(x.reviewer())) {
+                String name = x.reviewer();
                 reviewerWorkload.put(name, reviewerWorkload.getOrDefault(name, 0) + 1);
                 if (contentReviewerUsernames.contains(name)) {
                     contentReviewerWorkload.put(name, contentReviewerWorkload.getOrDefault(name, 0) + 1);
@@ -368,131 +344,8 @@ public class ReviewController {
         return ApiResponse.ok(data);
     }
 
-    private static Specification<ReviewContent> buildReviewFilterSpec(
-            ReviewStatus status,
-            ContentType contentType,
-            String sourceSystem,
-            String submitter,
-            String keyword,
-            LocalDateTime submitFrom,
-            LocalDateTime submitTo,
-            Integer riskMin,
-            Integer riskMax) {
-        return (root, query, cb) -> {
-            List<Predicate> preds = new ArrayList<>();
-            if (status != null) {
-                preds.add(cb.equal(root.get("reviewStatus"), status));
-            }
-            if (contentType != null) {
-                preds.add(cb.equal(root.get("contentType"), contentType));
-            }
-            if (StringUtils.hasText(sourceSystem)) {
-                String like = "%" + sourceSystem.trim().toLowerCase() + "%";
-                preds.add(cb.like(cb.lower(root.get("sourceSystem")), like));
-            }
-            if (StringUtils.hasText(submitter)) {
-                String like = "%" + submitter.trim().toLowerCase() + "%";
-                preds.add(cb.like(cb.lower(root.get("submitter")), like));
-            }
-            if (StringUtils.hasText(keyword)) {
-                String kw = "%" + keyword.trim().toLowerCase() + "%";
-                preds.add(cb.or(
-                        cb.like(cb.lower(root.get("contentText")), kw),
-                        cb.like(cb.lower(cb.coalesce(root.get("contentUrl"), cb.literal(""))), kw)
-                ));
-            }
-            if (submitFrom != null) {
-                preds.add(cb.greaterThanOrEqualTo(root.get("submitTime"), submitFrom));
-            }
-            if (submitTo != null) {
-                preds.add(cb.lessThanOrEqualTo(root.get("submitTime"), submitTo));
-            }
-            if (riskMin != null) {
-                preds.add(cb.ge(root.get("riskScore"), riskMin));
-            }
-            if (riskMax != null) {
-                preds.add(cb.le(root.get("riskScore"), riskMax));
-            }
-            if (preds.isEmpty()) {
-                return cb.conjunction();
-            }
-            return cb.and(preds.toArray(new Predicate[0]));
-        };
-    }
-
-    private boolean applyAutoReview(ReviewContent content) {
-        ReviewStrategyConfig cfg = getOrCreateStrategy();
-        content.setAutoReviewed(true);
-        int risk = content.getRiskScore() == null ? 0 : content.getRiskScore();
-        if (risk <= cfg.getLowRiskMaxScore()) {
-            applyAutoAction(content, cfg.getLowRiskAction(), "低风险自动审核");
-            return content.getReviewStatus() == ReviewStatus.REJECTED;
-        }
-        if (risk <= cfg.getMediumRiskMaxScore()) {
-            applyAutoAction(content, cfg.getMediumRiskAction(), "中风险转人工审核");
-            return content.getReviewStatus() == ReviewStatus.REJECTED;
-        }
-        if (risk > cfg.getMediumRiskMaxScore()) {
-            applyAutoAction(content, cfg.getHighRiskAction(), "高风险自动审核");
-            return content.getReviewStatus() == ReviewStatus.REJECTED;
-        }
-        return false;
-    }
-
-    private void applyAutoAction(ReviewContent content, AutoReviewAction action, String reason) {
-        if (action == null || action == AutoReviewAction.MANUAL_REVIEW) {
-            content.setReviewStatus(ReviewStatus.PENDING);
-            content.setAutoDecisionNote(reason + "，转人工审核");
-            content.setReviewTime(null);
-            content.setReviewer(null);
-            content.setRejectReason(null);
-            return;
-        }
-        content.setReviewTime(LocalDateTime.now());
-        content.setReviewer("AUTO");
-        if (action == AutoReviewAction.AUTO_APPROVE) {
-            content.setReviewStatus(ReviewStatus.APPROVED);
-            content.setRejectReason(null);
-            content.setAutoDecisionNote(reason + "，自动通过");
-        } else if (action == AutoReviewAction.AUTO_REJECT) {
-            content.setReviewStatus(ReviewStatus.REJECTED);
-            content.setRejectReason("自动审核拦截：" + reason);
-            content.setAutoDecisionNote(reason + "，自动拒绝");
-        }
-    }
-
-    private static boolean isImageViolation(ReviewContent content) {
-        String text = ((content.getContentText() == null ? "" : content.getContentText()) + " "
-                + (content.getContentUrl() == null ? "" : content.getContentUrl())).toLowerCase();
-        Set<String> bad = Set.of("violence", "porn", "bloody", "涉黄", "暴力", "违规");
-        return bad.stream().anyMatch(text::contains);
-    }
-
-    private int computeRiskScore(ReviewContent content) {
-        List<SensitiveWord> words = sensitiveWordRepository.findByEnabledTrueOrderByWordAsc();
-        String allText = ((content.getContentText() == null ? "" : content.getContentText()) + " "
-                + (content.getContentUrl() == null ? "" : content.getContentUrl())).toLowerCase();
-        int lightHits = 0;
-        for (SensitiveWord w : words) {
-            if (!StringUtils.hasText(w.getWord())) continue;
-            int hits = countOccurrences(allText, w.getWord().toLowerCase());
-            if (hits <= 0) continue;
-            if (w.getLevel() == SensitiveWordLevel.SEVERE) return 100;
-            lightHits += hits;
-        }
-        int score = lightHits * 10;
-        if (content.getContentType() == ContentType.IMAGE) {
-            if (isSeriousImageViolation(content)) return 100;
-            if (isImageViolation(content)) score += 10;
-        }
-        return Math.min(100, Math.max(0, score));
-    }
-
-    private static boolean isSeriousImageViolation(ReviewContent content) {
-        String text = ((content.getContentText() == null ? "" : content.getContentText()) + " "
-                + (content.getContentUrl() == null ? "" : content.getContentUrl())).toLowerCase();
-        Set<String> severe = Set.of("childporn", "terror", "爆炸物", "恋童", "极端暴力", "严重违规");
-        return severe.stream().anyMatch(text::contains);
+    private Long resolveAdminId(Authentication authentication) {
+        return adminUserRepository.findByUsername(authentication.getName()).map(AdminUser::getId).orElse(null);
     }
 
     private ReviewStrategyConfig getOrCreateStrategy() {
@@ -516,20 +369,5 @@ public class ReviewController {
 
     private static double round2(double v) {
         return Math.round(v * 100.0) / 100.0;
-    }
-
-    private static int countOccurrences(String text, String keyword) {
-        if (!StringUtils.hasText(text) || !StringUtils.hasText(keyword)) {
-            return 0;
-        }
-        int count = 0;
-        int idx = 0;
-        while (true) {
-            int found = text.indexOf(keyword, idx);
-            if (found < 0) break;
-            count++;
-            idx = found + keyword.length();
-        }
-        return count;
     }
 }

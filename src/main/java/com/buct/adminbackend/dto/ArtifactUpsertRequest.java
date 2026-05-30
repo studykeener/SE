@@ -5,17 +5,17 @@ import jakarta.validation.constraints.Size;
 
 public record ArtifactUpsertRequest(
         Integer museumId,
-        String objectId,
-        @NotBlank String name,
-        String period,
-        String type,
+        @NotBlank @Size(max = 255) String objectId,
+        @NotBlank @Size(max = 500) String name,
+        @NotBlank @Size(max = 200) String period,
+        @NotBlank @Size(max = 100) String type,
         String material,
-        String description,
-        String imageUrl,
+        @NotBlank String description,
+        @NotBlank String imageUrl,
         String museum,
         String location,
         String detailUrl,
-        String sourceSystem,
+        @NotBlank String sourceSystem,
         String sourceId,
         String kgSyncStatus
 ) {

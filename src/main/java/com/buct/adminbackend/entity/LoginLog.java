@@ -31,6 +31,9 @@ public class LoginLog {
     @Column(name = "ip_address", length = 80)
     private String ipAddress;
 
+    @Column(name = "source_system", nullable = false, length = 20)
+    private String sourceSystem = "admin";
+
     @Column(name = "user_agent", length = 255)
     private String userAgent;
 

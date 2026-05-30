@@ -23,5 +23,7 @@ public interface UserRepository extends JpaRepository<User, Long>, JpaSpecificat
 
     long countByRegisterTimeBetween(LocalDateTime from, LocalDateTime to);
 
+    long countByLastLoginAtGreaterThanEqual(LocalDateTime cutoff);
+
     Optional<User> findByUsername(String username);
 }

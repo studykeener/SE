@@ -25,14 +25,19 @@ public class AdminAccountInitializer implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
-        if (adminUserRepository.findByUsername(DEFAULT_ADMIN_USERNAME).isPresent()) {
-            return;
-        }
-        AdminUser admin = new AdminUser();
-        admin.setUsername(DEFAULT_ADMIN_USERNAME);
-        admin.setPasswordHash(passwordEncoder.encode(DEFAULT_ADMIN_PASSWORD));
-        admin.setRoleId(rolePermissionService.getRoleIdByCode("SUPER_ADMIN"));
-        admin.setStatus(UserStatus.ENABLED);
-        adminUserRepository.save(admin);
+        Long superAdminRoleId = rolePermissionService.getRoleIdByCode("SUPER_ADMIN");
+        adminUserRepository.findByUsername(DEFAULT_ADMIN_USERNAME).ifPresentOrElse(admin -> {
+            if (!superAdminRoleId.equals(admin.getRoleId())) {
+                admin.setRoleId(superAdminRoleId);
+                adminUserRepository.save(admin);
+            }
+        }, () -> {
+            AdminUser admin = new AdminUser();
+            admin.setUsername(DEFAULT_ADMIN_USERNAME);
+            admin.setPasswordHash(passwordEncoder.encode(DEFAULT_ADMIN_PASSWORD));
+            admin.setRoleId(superAdminRoleId);
+            admin.setStatus(UserStatus.ENABLED);
+            adminUserRepository.save(admin);
+        });
     }
 }

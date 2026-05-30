@@ -226,6 +226,40 @@ public class LogController {
         return csvDownload("security-logs.csv", csv);
     }
 
+    @GetMapping("/export/login")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.LOG_VIEW + "')")
+    public ResponseEntity<byte[]> exportLogin(
+            @RequestParam(required = false) String username,
+            @RequestParam(required = false) String result,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to) {
+        List<LoginLog> logs = loginLogs(username, result, keyword, from, to).data();
+        String csv = "id,userType,userId,username,result,sourceSystem,ipAddress,userAgent,loginTime\n" +
+                logs.stream().map(x -> csvRow(
+                        x.getId(), x.getUserType(), x.getUserId(), x.getUsername(), x.getResult(),
+                        x.getSourceSystem(), x.getIpAddress(), x.getUserAgent(), x.getLoginTime()
+                )).collect(Collectors.joining("\n"));
+        return csvDownload("login-logs.csv", csv);
+    }
+
+    @GetMapping("/export/data-change")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.LOG_VIEW + "')")
+    public ResponseEntity<byte[]> exportDataChange(
+            @RequestParam(required = false) String operator,
+            @RequestParam(required = false) String changeType,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to) {
+        List<DataChangeLog> logs = dataChangeLogs(operator, changeType, keyword, from, to).data();
+        String csv = "id,operator,changeType,targetType,targetId,detail,changeTime\n" +
+                logs.stream().map(x -> csvRow(
+                        x.getId(), x.getOperator(), x.getChangeType(), x.getTargetType(),
+                        x.getTargetId(), x.getDetail(), x.getChangeTime()
+                )).collect(Collectors.joining("\n"));
+        return csvDownload("data-change-logs.csv", csv);
+    }
+
     private boolean contains(String text, String keyword) {
         return text != null && text.toLowerCase().contains(keyword.toLowerCase());
     }

@@ -463,6 +463,7 @@ CREATE TABLE `login_logs` (
   `username` varchar(60) COLLATE utf8mb4_unicode_ci NOT NULL,
   `result` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL,
   `ip_address` varchar(80) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `source_system` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'web/app/admin',
   `user_agent` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `login_time` datetime(6) NOT NULL,
   PRIMARY KEY (`id`),

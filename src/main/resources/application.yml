@@ -29,19 +29,16 @@ security:
     expire-seconds: 86400
 
 integration:
-  # mock: 不请求外网，返回固定模拟 JSON；real: 向以下 baseUrl 发起真实 HTTP
-  mode: mock
-  user-system-base-url: http://localhost:9001
-  artifact-system-base-url: http://localhost:9002
-  kg-system-base-url: http://localhost:9003
-  paths:
-    users: /api/v1/users
-    artifacts: /api/v1/artifacts
-    review-callback: /api/v1/content/review-result
-    kg-entities: /api/v1/kg/entities
-    kg-relations: /api/v1/kg/relations
-    kg-triples: /api/v1/kg/triples
-    kg-sync-jobs: /api/v1/kg/sync/jobs
+  # 队友调用 /api/integration/** 时使用的密钥（请求头 X-Integration-Api-Key）
+  inbound-api-key: dev-integration-key-change-me
+
+# 知识图谱：直连 Neo4j（管理页「知识图谱管理」使用 /api/admin/kg/**）
+kg:
+  neo4j:
+    enabled: true
+    uri: bolt://localhost:7687
+    username: neo4j
+    password: password123   # 与 graph-db/docker-compose.yml 中 NEO4J_AUTH 一致
 
 backup:
   directory: backups

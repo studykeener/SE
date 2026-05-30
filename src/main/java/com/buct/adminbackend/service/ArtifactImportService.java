@@ -10,6 +10,8 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -19,6 +21,9 @@ public class ArtifactImportService {
     private final ArtifactRepository artifactRepository;
 
     public int importFromCsvString(String csvContent) {
+        if (csvContent.startsWith("\uFEFF")) {
+            csvContent = csvContent.substring(1);
+        }
         String[] lines = csvContent.split("\\r?\\n");
         if (lines.length < 1) {
             return 0;
@@ -30,7 +35,7 @@ public class ArtifactImportService {
             if (line.isEmpty()) {
                 continue;
             }
-            String[] parts = line.split(",", -1);
+            String[] parts = parseCsvLine(line);
             if (isHeaderDataRow(parts)) {
                 continue;
             }
@@ -70,6 +75,9 @@ public class ArtifactImportService {
             a.setPeriod(value(parts, 4, "未知"));
             a.setType(value(parts, 5, "未知"));
             a.setMaterial(nullIfBlank(value(parts, 6, null)));
+            a.setDescription(value(parts, 7, a.getTitle()));
+            a.setImageUrl(value(parts, 8, ""));
+            a.setDetailUrl(value(parts, 9, a.getImageUrl()));
         } else if (isLegacyExportFormatRow(parts)) {
             a.setTitle(value(parts, 1, "未命名"));
             a.setPeriod(value(parts, 2, "未知"));
@@ -123,14 +131,17 @@ public class ArtifactImportService {
         if (parts.length == 0) {
             return false;
         }
-        String a = parts[0].trim();
+        String a = unquote(parts[0].trim());
         return "name".equalsIgnoreCase(a)
                 || "artifactid".equalsIgnoreCase(a)
-                || ("id".equalsIgnoreCase(a) && parts.length > 1 && "name".equalsIgnoreCase(parts[1].trim()));
+                || ("id".equalsIgnoreCase(a) && parts.length > 1 && "name".equalsIgnoreCase(unquote(parts[1].trim())));
     }
 
     private static boolean isNewExportFormatRow(String[] parts) {
-        return parts.length >= 4 && parts[0].trim().startsWith("entity:artifact:");
+        if (parts.length < 4) {
+            return false;
+        }
+        return unquote(parts[0].trim()).startsWith("entity:artifact:");
     }
 
     private static boolean isLegacyExportFormatRow(String[] parts) {
@@ -141,8 +152,45 @@ public class ArtifactImportService {
         if (index >= parts.length) {
             return defaultValue;
         }
-        String s = parts[index].trim();
+        String s = unquote(parts[index].trim());
         return s.isEmpty() ? defaultValue : s;
+    }
+
+    private static String unquote(String s) {
+        if (s.length() >= 2 && s.startsWith("\"") && s.endsWith("\"")) {
+            return s.substring(1, s.length() - 1).replace("\"\"", "\"");
+        }
+        return s;
+    }
+
+    private static String[] parseCsvLine(String line) {
+        List<String> fields = new ArrayList<>();
+        StringBuilder cur = new StringBuilder();
+        boolean inQuotes = false;
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
+            if (inQuotes) {
+                if (c == '"') {
+                    if (i + 1 < line.length() && line.charAt(i + 1) == '"') {
+                        cur.append('"');
+                        i++;
+                    } else {
+                        inQuotes = false;
+                    }
+                } else {
+                    cur.append(c);
+                }
+            } else if (c == '"') {
+                inQuotes = true;
+            } else if (c == ',') {
+                fields.add(cur.toString());
+                cur.setLength(0);
+            } else {
+                cur.append(c);
+            }
+        }
+        fields.add(cur.toString());
+        return fields.toArray(new String[0]);
     }
 
     private static int parseInt(String[] parts, int index, int defaultValue) {
