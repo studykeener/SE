@@ -108,20 +108,8 @@ CREATE TABLE IF NOT EXISTS `admin_role_permission_audit` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='角色/权限变更审计';
 
 -- -----------------------------------------------------------------------------
--- 3. 用户行为与权限审计
+-- 3. 用户权限审计
 -- -----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `user_behaviors` (
-  `id` bigint NOT NULL AUTO_INCREMENT,
-  `user_id` bigint NOT NULL COMMENT 'FK→user.user_id',
-  `behavior_type` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'LOGIN/COMMENT/UPLOAD/...',
-  `behavior_content` varchar(2000) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `source_system` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'web/app/admin',
-  `source_record_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `behavior_time` datetime(6) NOT NULL,
-  PRIMARY KEY (`id`),
-  KEY `idx_ub_user_time` (`user_id`,`behavior_time`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户行为记录';
-
 CREATE TABLE IF NOT EXISTS `user_permission_audit` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `user_id` bigint NOT NULL COMMENT 'FK→user.user_id',
@@ -140,34 +128,8 @@ CREATE TABLE IF NOT EXISTS `user_permission_audit` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户状态/权限变更审计';
 
 -- -----------------------------------------------------------------------------
--- 4. 内容审核
+-- 4. 内容审核（待审队列直接使用 comment + user_upload_photo，不建 review_contents）
 -- -----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `review_contents` (
-  `id` bigint NOT NULL AUTO_INCREMENT,
-  `content_type` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'COMMENT/PHOTO/POST/...',
-  `source_system` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `source_table` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `source_record_id` bigint DEFAULT NULL,
-  `submitter_user_id` bigint DEFAULT NULL,
-  `submitter` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `artifact_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `content_text` varchar(2000) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `content_url` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `review_status` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PENDING',
-  `risk_score` int NOT NULL DEFAULT '0',
-  `submit_time` datetime(6) NOT NULL,
-  `review_time` datetime(6) DEFAULT NULL,
-  `reviewer_id` bigint DEFAULT NULL,
-  `reviewer` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `reject_reason` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `auto_reviewed` tinyint(1) NOT NULL DEFAULT '0',
-  `auto_decision_note` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `recheck_required` tinyint(1) NOT NULL DEFAULT '0',
-  PRIMARY KEY (`id`),
-  KEY `idx_rc_status_time` (`review_status`,`submit_time`),
-  KEY `idx_rc_source` (`source_table`,`source_record_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='统一待审内容队列';
-
 CREATE TABLE IF NOT EXISTS `sensitive_words` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `word` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,

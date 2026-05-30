@@ -28,7 +28,6 @@ D:\SE\admin-backend\src\main\java\com\buct\adminbackend\dto\CreateAdminUserReque
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\dto\CreateBackupRequest.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\dto\CreateReviewContentRequest.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\dto\CreateRoleRequest.java
-D:\SE\admin-backend\src\main\java\com\buct\adminbackend\dto\CreateUnifiedUserBehaviorRequest.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\dto\CreateUnifiedUserRequest.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\dto\LoginRequest.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\dto\LoginResponse.java
@@ -62,14 +61,12 @@ D:\SE\admin-backend\src\main\java\com\buct\adminbackend\entity\OperationLog.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\entity\PermissionDefinition.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\entity\PhotoAuditStatusConverter.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\entity\RestoreLog.java
-D:\SE\admin-backend\src\main\java\com\buct\adminbackend\entity\ReviewContent.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\entity\ReviewStrategyConfig.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\entity\RoleDefinition.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\entity\RolePermissionAssignment.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\entity\SensitiveWord.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\entity\SystemLog.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\entity\User.java
-D:\SE\admin-backend\src\main\java\com\buct\adminbackend\entity\UserBehavior.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\entity\UserFavorite.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\entity\UserLike.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\entity\UserPermissionAudit.java
@@ -93,13 +90,11 @@ D:\SE\admin-backend\src\main\java\com\buct\adminbackend\repository\LoginLogRepos
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\repository\OperationLogRepository.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\repository\PermissionDefinitionRepository.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\repository\RestoreLogRepository.java
-D:\SE\admin-backend\src\main\java\com\buct\adminbackend\repository\ReviewContentRepository.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\repository\ReviewStrategyConfigRepository.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\repository\RoleDefinitionRepository.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\repository\RolePermissionAssignmentRepository.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\repository\SensitiveWordRepository.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\repository\SystemLogRepository.java
-D:\SE\admin-backend\src\main\java\com\buct\adminbackend\repository\UserBehaviorRepository.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\repository\UserFavoriteRepository.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\repository\UserLikeRepository.java
 D:\SE\admin-backend\src\main\java\com\buct\adminbackend\repository\UserPermissionAuditRepository.java

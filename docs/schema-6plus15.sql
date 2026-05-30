@@ -1,12 +1,8 @@
 -- =============================================================================
--- 本地全新建库脚本（删库 → 重建全部表）
+-- 完整建库脚本：6 张共用表 + 15 张子系统5 表 = 21 张（不含已废弃 admin_user）
 -- =============================================================================
--- 内容 = 7 张共用表 + 子系统5 追加 15 张 + user 扩展字段，共 22 张表
---
--- 【本地】一条命令重建干净环境：
---   mysql -u root -p123456 < D:\SE\admin-backend\docs\schema-full.sql
---
--- 【最终共用库】测好后不要执行本文件！只执行 schema-subsystem5-addon.sql 追加你的表。
+-- 执行示例（本地重建）：
+--   mysql -u root -p123456 < D:\SE\admin-backend\docs\schema-6plus15.sql
 -- =============================================================================
 
 /*!40101 SET NAMES utf8mb4 */;
@@ -21,25 +17,8 @@ CREATE DATABASE `overseas_artifacts`
 USE `overseas_artifacts`;
 
 -- =============================================================================
--- 第一部分：全组统一业务表（来自 表结构.sql，user 表增加子系统5 扩展列）
+-- 第一部分：6 张全组共用业务表
 -- =============================================================================
-
--- ----------------------------
--- Table: admin_user（其他子系统/旧版审核员表，保留兼容）
--- ----------------------------
-DROP TABLE IF EXISTS `admin_user`;
-CREATE TABLE `admin_user` (
-  `admin_id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '管理员ID',
-  `username` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '登录名',
-  `password` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '密码哈希',
-  `real_name` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '姓名',
-  `role_code` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'auditor' COMMENT 'super_admin/auditor/data_admin',
-  `status` tinyint NOT NULL DEFAULT '1' COMMENT '1启用 0停用',
-  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`admin_id`),
-  UNIQUE KEY `uk_admin_username` (`username`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='后台管理员（审核员等，旧版）';
 
 -- ----------------------------
 -- Table: artifact（三馆文物主数据）
@@ -132,7 +111,7 @@ CREATE TABLE `comment` (
   `audit_status` tinyint NOT NULL DEFAULT '0' COMMENT '0待审 1通过 2拒绝 3复审',
   `auto_audit_status` tinyint DEFAULT NULL COMMENT '自动审核结果',
   `sensitive_words_hit` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '命中敏感词，逗号分隔',
-  `auditor_id` bigint unsigned DEFAULT NULL COMMENT '审核员 admin_user.admin_id',
+  `auditor_id` bigint unsigned DEFAULT NULL COMMENT '审核员 admin_users.id',
   `status` tinyint NOT NULL DEFAULT '1' COMMENT '1显示 0用户删 2后台屏蔽',
   `deleted_by` bigint unsigned DEFAULT NULL COMMENT '删除/屏蔽操作管理员ID',
   `delete_reason` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '删除或屏蔽原因',
@@ -191,7 +170,7 @@ CREATE TABLE `user_upload_photo` (
   `audit_method` tinyint NOT NULL DEFAULT '1' COMMENT '1自动 2人工 3自动+人工',
   `auto_audit_status` tinyint DEFAULT NULL COMMENT '图片自动审核结果',
   `auto_audit_score` decimal(5,2) DEFAULT NULL COMMENT '违规风险分 0-100',
-  `auditor_id` bigint unsigned DEFAULT NULL COMMENT '审核管理员ID',
+  `auditor_id` bigint unsigned DEFAULT NULL COMMENT '审核员 admin_users.id',
   `reject_reason` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '拒绝原因',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '上传时间',
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -202,7 +181,7 @@ CREATE TABLE `user_upload_photo` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户上传文物照片（须审核）';
 
 -- =============================================================================
--- 第二部分：子系统5 — RBAC 与管理员（新增）
+-- 第二部分：子系统5 — RBAC 与管理员（4 张）
 -- =============================================================================
 
 DROP TABLE IF EXISTS `role_permission_assignments`;
@@ -282,7 +261,7 @@ CREATE TABLE `admin_role_permission_audit` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='角色/权限变更审计';
 
 -- =============================================================================
--- 第三部分：子系统5 — 用户行为与权限审计（新增）
+-- 第三部分：子系统5 — 用户权限审计（1 张）
 -- =============================================================================
 
 DROP TABLE IF EXISTS `user_permission_audit`;
@@ -305,7 +284,7 @@ CREATE TABLE `user_permission_audit` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户状态/权限变更审计';
 
 -- =============================================================================
--- 第四部分：子系统5 — 内容审核（新增）
+-- 第四部分：子系统5 — 内容审核（2 张）
 -- =============================================================================
 
 DROP TABLE IF EXISTS `sensitive_words`;
@@ -337,7 +316,7 @@ CREATE TABLE `review_strategy_config` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='自动审核策略（单行配置）';
 
 -- =============================================================================
--- 第五部分：子系统5 — 备份与恢复（新增）
+-- 第五部分：子系统5 — 备份与恢复（3 张）
 -- =============================================================================
 
 DROP TABLE IF EXISTS `restore_logs`;
@@ -390,7 +369,7 @@ CREATE TABLE `restore_logs` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='恢复操作审计';
 
 -- =============================================================================
--- 第六部分：子系统5 — 日志（新增）
+-- 第六部分：子系统5 — 日志（4 张）
 -- =============================================================================
 
 DROP TABLE IF EXISTS `data_change_logs`;
@@ -459,12 +438,11 @@ CREATE TABLE `data_change_logs` (
 /*!40014 SET FOREIGN_KEY_CHECKS=1 */;
 /*!40014 SET UNIQUE_CHECKS=1 */;
 
--- 建表完成。共 22 张表：
---   全组统一 7 张：admin_user, artifact, user, comment, user_favorite, user_like, user_upload_photo
---   子系统5 新增 15 张：role_definitions, permission_definitions, role_permission_assignments,
+-- 建表完成。共 21 张表：
+--   6 张共用：artifact, user, comment, user_favorite, user_like, user_upload_photo
+--   15 张子系统5：role_definitions, permission_definitions, role_permission_assignments,
 --     admin_users, admin_role_permission_audit, user_permission_audit,
 --     sensitive_words, review_strategy_config,
 --     backup_records, backup_task_config, restore_logs,
 --     operation_logs, login_logs, system_logs, data_change_logs
---   审核队列直接使用 comment + user_upload_photo，不再建 review_contents
---   用户行为追溯直接使用 7 张共用表，不再建 user_behaviors
+--   知识图谱数据在 Neo4j，不在 MySQL

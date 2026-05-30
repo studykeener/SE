@@ -8,7 +8,6 @@ import com.buct.adminbackend.entity.UserPermissionAudit;
 import com.buct.adminbackend.enums.UserStatus;
 import com.buct.adminbackend.repository.AdminUserRepository;
 import com.buct.adminbackend.repository.CommentRepository;
-import com.buct.adminbackend.repository.UserBehaviorRepository;
 import com.buct.adminbackend.repository.UserFavoriteRepository;
 import com.buct.adminbackend.repository.UserLikeRepository;
 import com.buct.adminbackend.repository.UserPermissionAuditRepository;
@@ -45,7 +44,6 @@ public class UnifiedUserController {
     private static final String DEFAULT_USER_PASSWORD = "ChangeMe123";
 
     private final UserRepository userRepository;
-    private final UserBehaviorRepository userBehaviorRepository;
     private final UserPermissionAuditRepository userPermissionAuditRepository;
     private final CommentRepository commentRepository;
     private final UserUploadPhotoRepository userUploadPhotoRepository;
@@ -325,7 +323,6 @@ public class UnifiedUserController {
         userUploadPhotoRepository.deleteByUserId(userId);
         userFavoriteRepository.deleteByUserId(userId);
         userLikeRepository.deleteByUserId(userId);
-        userBehaviorRepository.deleteByUserId(userId);
     }
 
     private static Integer statusCode(UserStatus status) {
