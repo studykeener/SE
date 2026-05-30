@@ -3,23 +3,33 @@ package com.buct.adminbackend.controller;
 import com.buct.adminbackend.common.ApiResponse;
 import com.buct.adminbackend.dto.ArtifactUpsertRequest;
 import com.buct.adminbackend.entity.Artifact;
+import com.buct.adminbackend.entity.ArtifactId;
 import com.buct.adminbackend.repository.ArtifactRepository;
 import com.buct.adminbackend.service.ArtifactImportService;
 import com.buct.adminbackend.service.AuditLogService;
+import jakarta.persistence.criteria.Predicate;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import com.buct.adminbackend.security.PermissionCodes;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
-import java.time.LocalDateTime;
+import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 @RestController
 @RequestMapping("/api/admin/artifacts")
@@ -31,94 +41,324 @@ public class ArtifactController {
     private final ArtifactImportService artifactImportService;
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN','CONTENT_REVIEWER')")
-    public ApiResponse<List<Artifact>> list() {
-        return ApiResponse.ok(artifactRepository.findAll());
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.ARTIFACT_VIEW + "')")
+    public ApiResponse<List<Artifact>> list(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String sourceSystem,
+            @RequestParam(required = false) String period,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String kgSyncStatus) {
+        Specification<Artifact> spec = buildFilterSpec(keyword, sourceSystem, period, type, kgSyncStatus);
+        Sort sort = Sort.by(Sort.Direction.ASC, "title");
+        List<Artifact> data = spec == null
+                ? artifactRepository.findAll(sort)
+                : artifactRepository.findAll(spec, sort);
+        return ApiResponse.ok(data);
     }
 
-    @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN','CONTENT_REVIEWER')")
-    public ApiResponse<Artifact> detail(@PathVariable Long id) {
-        Artifact data = artifactRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("文物不存在"));
+    @GetMapping("/{artifactId}")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.ARTIFACT_VIEW + "')")
+    public ApiResponse<Artifact> detail(@PathVariable String artifactId) {
+        Artifact data = findByArtifactId(artifactId);
         return ApiResponse.ok(data);
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN')")
+    @Transactional
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.ARTIFACT_EDIT + "')")
     public ApiResponse<Artifact> create(@Valid @RequestBody ArtifactUpsertRequest request, Authentication auth) {
+        int museumId = resolveMuseumId(request);
+        String objectId = resolveObjectId(request, null);
+        ArtifactId pk = new ArtifactId(museumId, objectId);
+        if (artifactRepository.existsById(pk)) {
+            throw new IllegalArgumentException("该馆别下文物编号已存在：" + museumLabelZh(museumId) + " / " + objectId);
+        }
         Artifact data = new Artifact();
-        apply(request, data);
+        apply(request, data, museumId, objectId, true);
         Artifact saved = artifactRepository.save(data);
-        auditLogService.logDataChange(auth.getName(), "CREATE", "ARTIFACT", String.valueOf(saved.getId()), saved.getName());
+        auditLogService.logDataChange(auth.getName(), "CREATE", "ARTIFACT", saved.getArtifactId(), saved.getName());
         return ApiResponse.ok("创建成功", saved);
     }
 
-    @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN')")
-    public ApiResponse<Artifact> update(@PathVariable Long id,
+    @PutMapping("/{artifactId}")
+    @Transactional
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.ARTIFACT_EDIT + "')")
+    public ApiResponse<Artifact> update(@PathVariable String artifactId,
                                         @Valid @RequestBody ArtifactUpsertRequest request,
                                         Authentication auth) {
-        Artifact data = artifactRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("文物不存在"));
-        apply(request, data);
-        Artifact saved = artifactRepository.save(data);
-        auditLogService.logDataChange(auth.getName(), "UPDATE", "ARTIFACT", String.valueOf(saved.getId()), saved.getName());
+        Artifact managed = findByArtifactId(artifactId);
+        ArtifactId oldPk = new ArtifactId(managed.getMuseumId(), managed.getObjectId());
+        int museumId = resolveMuseumId(request);
+        String objectId = resolveObjectId(request, managed.getObjectId());
+        ArtifactId newPk = new ArtifactId(museumId, objectId);
+
+        if (!oldPk.equals(newPk)) {
+            if (artifactRepository.existsById(newPk)) {
+                throw new IllegalArgumentException("该馆别下文物编号已存在：" + museumLabelZh(museumId) + " / " + objectId);
+            }
+            Artifact replacement = cloneForRekey(managed);
+            apply(request, replacement, museumId, objectId, false);
+            artifactRepository.delete(managed);
+            artifactRepository.flush();
+            Artifact saved = artifactRepository.save(replacement);
+            auditLogService.logDataChange(auth.getName(), "UPDATE", "ARTIFACT", saved.getArtifactId(), saved.getName());
+            return ApiResponse.ok("更新成功", saved);
+        }
+
+        apply(request, managed, museumId, objectId, false);
+        Artifact saved = artifactRepository.save(managed);
+        auditLogService.logDataChange(auth.getName(), "UPDATE", "ARTIFACT", saved.getArtifactId(), saved.getName());
         return ApiResponse.ok("更新成功", saved);
     }
 
-    @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN')")
-    public ApiResponse<Void> delete(@PathVariable Long id, Authentication auth) {
-        artifactRepository.deleteById(id);
-        auditLogService.logDataChange(auth.getName(), "DELETE", "ARTIFACT", String.valueOf(id), "");
+    @DeleteMapping("/{artifactId}")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.ARTIFACT_DELETE + "')")
+    public ApiResponse<Void> delete(@PathVariable String artifactId, Authentication auth) {
+        Artifact data = findByArtifactId(artifactId);
+        artifactRepository.delete(data);
+        auditLogService.logDataChange(auth.getName(), "DELETE", "ARTIFACT", artifactId, "");
         return ApiResponse.ok("删除成功", null);
     }
 
     @GetMapping("/export")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.ARTIFACT_IMPORT_EXPORT + "')")
     public ResponseEntity<byte[]> exportCsv() {
-        StringBuilder sb = new StringBuilder("id,name,period,type,material,sourceSystem,sourceId,kgSyncStatus\n");
+        StringBuilder sb = new StringBuilder();
+        sb.append(csvRow("artifactId", "museumId", "objectId", "name", "period", "type", "material",
+                "description", "imageUrl", "detailUrl", "sourceSystem", "kgSyncStatus"));
         for (Artifact a : artifactRepository.findAll()) {
-            sb.append(a.getId()).append(",")
-                    .append(escape(a.getName())).append(",")
-                    .append(escape(a.getPeriod())).append(",")
-                    .append(escape(a.getType())).append(",")
-                    .append(escape(a.getMaterial())).append(",")
-                    .append(escape(a.getSourceSystem())).append(",")
-                    .append(escape(a.getSourceId())).append(",")
-                    .append(escape(a.getKgSyncStatus())).append("\n");
+            sb.append(csvRow(
+                    a.getArtifactId(),
+                    a.getMuseumId(),
+                    a.getObjectId(),
+                    a.getName(),
+                    a.getPeriod(),
+                    a.getType(),
+                    a.getMaterial(),
+                    a.getDescription(),
+                    a.getImageUrl(),
+                    a.getDetailUrl(),
+                    a.getSourceSystem(),
+                    a.getKgSyncStatus()
+            ));
         }
-        byte[] bytes = sb.toString().getBytes(StandardCharsets.UTF_8);
+        return csvDownload("artifacts.csv", sb.toString());
+    }
+
+    private static ResponseEntity<byte[]> csvDownload(String fileName, String csv) {
+        byte[] utf8 = csv.getBytes(StandardCharsets.UTF_8);
+        byte[] bom = new byte[]{(byte) 0xEF, (byte) 0xBB, (byte) 0xBF};
+        byte[] payload = new byte[bom.length + utf8.length];
+        System.arraycopy(bom, 0, payload, 0, bom.length);
+        System.arraycopy(utf8, 0, payload, bom.length, utf8.length);
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=artifacts.csv")
-                .contentType(MediaType.parseMediaType("text/csv;charset=UTF-8"))
-                .body(bytes);
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"")
+                .header(HttpHeaders.CONTENT_TYPE, "text/csv; charset=UTF-8")
+                .body(payload);
+    }
+
+    private static String csvRow(Object... cells) {
+        StringBuilder row = new StringBuilder();
+        for (int i = 0; i < cells.length; i++) {
+            if (i > 0) {
+                row.append(',');
+            }
+            row.append(csvCell(cells[i]));
+        }
+        return row.append('\n').toString();
+    }
+
+    private static String csvCell(Object value) {
+        String text = value == null ? "" : String.valueOf(value);
+        text = text.replace("\"", "\"\"");
+        return "\"" + text + "\"";
     }
 
     @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.ARTIFACT_IMPORT_EXPORT + "')")
     public ApiResponse<Integer> importCsvFile(@RequestParam("file") MultipartFile file, Authentication auth) throws IOException {
         int count = artifactImportService.importFromMultipartFile(file);
         auditLogService.logDataChange(auth.getName(), "IMPORT", "ARTIFACT", "-", "count=" + count);
         return ApiResponse.ok("导入成功", count);
     }
 
-    private void apply(ArtifactUpsertRequest req, Artifact data) {
-        data.setName(req.name());
-        data.setPeriod(req.period());
-        data.setType(req.type());
-        data.setMaterial(req.material());
-        data.setDescription(req.description());
-        data.setImageUrl(req.imageUrl());
-        data.setSourceSystem(req.sourceSystem());
-        data.setSourceId(req.sourceId());
-        data.setKgSyncStatus(req.kgSyncStatus() == null || req.kgSyncStatus().isBlank() ? "PENDING" : req.kgSyncStatus());
-        data.setUpdatedAt(LocalDateTime.now());
+    private Artifact findByArtifactId(String artifactId) {
+        String decoded = URLDecoder.decode(artifactId, StandardCharsets.UTF_8);
+        return artifactRepository.findByArtifactId(decoded)
+                .orElseThrow(() -> new IllegalArgumentException("文物不存在"));
     }
 
-    private String escape(String text) {
-        if (text == null) {
-            return "";
+    private static Specification<Artifact> buildFilterSpec(
+            String keyword,
+            String sourceSystem,
+            String period,
+            String type,
+            String kgSyncStatus) {
+        boolean hasFilter = StringUtils.hasText(keyword)
+                || StringUtils.hasText(sourceSystem)
+                || StringUtils.hasText(period)
+                || StringUtils.hasText(type)
+                || StringUtils.hasText(kgSyncStatus);
+        if (!hasFilter) {
+            return null;
         }
-        return text.replace(",", " ");
+        return (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            if (StringUtils.hasText(keyword)) {
+                String like = "%" + keyword.trim().toLowerCase() + "%";
+                predicates.add(cb.or(
+                        cb.like(cb.lower(root.get("title")), like),
+                        cb.like(cb.lower(root.get("id").get("objectId")), like),
+                        cb.like(cb.lower(root.get("period")), like),
+                        cb.like(cb.lower(root.get("type")), like),
+                        cb.like(cb.lower(cb.coalesce(root.get("material"), "")), like),
+                        cb.like(cb.lower(root.get("description")), like)
+                ));
+            }
+            if (StringUtils.hasText(sourceSystem)) {
+                Integer museumId = resolveMuseumIdFromSource(sourceSystem.trim());
+                if (museumId != null) {
+                    predicates.add(cb.equal(root.get("id").get("museumId"), museumId));
+                }
+            }
+            if (StringUtils.hasText(period)) {
+                predicates.add(cb.like(cb.lower(root.get("period")),
+                        "%" + period.trim().toLowerCase() + "%"));
+            }
+            if (StringUtils.hasText(type)) {
+                predicates.add(cb.like(cb.lower(root.get("type")),
+                        "%" + type.trim().toLowerCase() + "%"));
+            }
+            if (StringUtils.hasText(kgSyncStatus)) {
+                if ("SYNCED".equalsIgnoreCase(kgSyncStatus.trim())) {
+                    predicates.add(cb.and(
+                            cb.isNotNull(root.get("artistEnrichedAt")),
+                            cb.notEqual(root.get("artistEnrichedAt"), "")
+                    ));
+                } else if ("PENDING".equalsIgnoreCase(kgSyncStatus.trim())) {
+                    predicates.add(cb.or(
+                            cb.isNull(root.get("artistEnrichedAt")),
+                            cb.equal(root.get("artistEnrichedAt"), "")
+                    ));
+                }
+            }
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+    }
+
+    private static Integer resolveMuseumIdFromSource(String sourceSystem) {
+        return switch (sourceSystem.toLowerCase()) {
+            case "smithsonian", "1" -> 1;
+            case "harvard", "2" -> 2;
+            case "mfa", "3" -> 3;
+            default -> null;
+        };
+    }
+
+    private static int resolveMuseumId(ArtifactUpsertRequest req) {
+        if (req.museumId() != null) {
+            return req.museumId();
+        }
+        if (!StringUtils.hasText(req.sourceSystem())) {
+            throw new IllegalArgumentException("请选择所属馆别");
+        }
+        return switch (req.sourceSystem().trim().toLowerCase()) {
+            case "harvard" -> 2;
+            case "mfa" -> 3;
+            case "smithsonian" -> 1;
+            default -> throw new IllegalArgumentException("未知馆别来源：" + req.sourceSystem());
+        };
+    }
+
+    private static String resolveObjectId(ArtifactUpsertRequest req, String existingObjectId) {
+        if (StringUtils.hasText(req.objectId())) {
+            return req.objectId().trim();
+        }
+        if (StringUtils.hasText(req.sourceId())) {
+            return req.sourceId().trim();
+        }
+        if (StringUtils.hasText(existingObjectId)) {
+            return existingObjectId;
+        }
+        throw new IllegalArgumentException("请填写文物编号");
+    }
+
+    private void apply(ArtifactUpsertRequest req, Artifact data, int museumId, String objectId, boolean creating) {
+        data.setMuseumId(museumId);
+        data.setObjectId(objectId);
+        data.setTitle(req.name().trim());
+        data.setPeriod(req.period().trim());
+        data.setType(req.type().trim());
+        data.setMaterial(StringUtils.hasText(req.material()) ? req.material().trim() : null);
+        data.setDescription(req.description().trim());
+        data.setMuseum(StringUtils.hasText(req.museum()) ? req.museum().trim() : museumLabel(museumId));
+        data.setLocation(StringUtils.hasText(req.location()) ? req.location().trim() : museumLabel(museumId));
+        String imageUrl = req.imageUrl().trim();
+        data.setImageUrl(imageUrl);
+        data.setImagePath(imageUrl);
+        data.setDetailUrl(StringUtils.hasText(req.detailUrl()) ? req.detailUrl().trim() : imageUrl);
+        if (creating || data.getCrawlDate() == null) {
+            data.setCrawlDate(LocalDate.now());
+        }
+        data.setArtifactId("entity:artifact:" + museumId + ":" + objectId);
+        applyKgSyncStatus(req, data, creating);
+    }
+
+    private static void applyKgSyncStatus(ArtifactUpsertRequest req, Artifact data, boolean creating) {
+        if (!StringUtils.hasText(req.kgSyncStatus())) {
+            return;
+        }
+        if ("SYNCED".equalsIgnoreCase(req.kgSyncStatus())) {
+            if (creating || !StringUtils.hasText(data.getArtistEnrichedAt())) {
+                data.setArtistEnrichedAt(LocalDate.now().toString());
+            }
+        } else if ("PENDING".equalsIgnoreCase(req.kgSyncStatus())) {
+            data.setArtistEnrichedAt("");
+        }
+    }
+
+    private static Artifact cloneForRekey(Artifact from) {
+        Artifact to = new Artifact();
+        to.setArtist(from.getArtist());
+        to.setArtistProvince(from.getArtistProvince());
+        to.setDynasty(from.getDynasty());
+        to.setArtistWikidataId(Objects.requireNonNullElse(from.getArtistWikidataId(), ""));
+        to.setArtistBirth(Objects.requireNonNullElse(from.getArtistBirth(), ""));
+        to.setArtistDeath(Objects.requireNonNullElse(from.getArtistDeath(), ""));
+        to.setArtistBio(Objects.requireNonNullElse(from.getArtistBio(), ""));
+        to.setArtistWikipediaSummary(Objects.requireNonNullElse(from.getArtistWikipediaSummary(), ""));
+        to.setArtistEnrichedAt(Objects.requireNonNullElse(from.getArtistEnrichedAt(), ""));
+        to.setPeriodStartYear(from.getPeriodStartYear());
+        to.setPeriodEndYear(from.getPeriodEndYear());
+        to.setCulture(from.getCulture());
+        to.setProvenance(from.getProvenance());
+        to.setBibliography(from.getBibliography());
+        to.setDimensions(from.getDimensions());
+        to.setImageUrls(from.getImageUrls());
+        to.setIiifManifestUrl(from.getIiifManifestUrl());
+        to.setImagePaths(from.getImagePaths());
+        to.setImageCount(from.getImageCount() == null ? (short) 0 : from.getImageCount());
+        to.setCreditLine(from.getCreditLine());
+        to.setAccessionNumber(from.getAccessionNumber());
+        to.setCrawlDate(from.getCrawlDate());
+        return to;
+    }
+
+    private static String museumLabel(int museumId) {
+        return switch (museumId) {
+            case 1 -> "Smithsonian";
+            case 2 -> "Harvard";
+            case 3 -> "MFA";
+            default -> "Museum " + museumId;
+        };
+    }
+
+    private static String museumLabelZh(int museumId) {
+        return switch (museumId) {
+            case 1 -> "史密森尼";
+            case 2 -> "哈佛";
+            case 3 -> "波士顿美术博物馆";
+            default -> "馆别" + museumId;
+        };
     }
 }

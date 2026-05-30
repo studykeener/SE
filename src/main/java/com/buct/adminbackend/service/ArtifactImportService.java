@@ -4,11 +4,15 @@ import com.buct.adminbackend.entity.Artifact;
 import com.buct.adminbackend.repository.ArtifactRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.time.LocalDateTime;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -17,45 +21,25 @@ public class ArtifactImportService {
     private final ArtifactRepository artifactRepository;
 
     public int importFromCsvString(String csvContent) {
+        if (csvContent.startsWith("\uFEFF")) {
+            csvContent = csvContent.substring(1);
+        }
         String[] lines = csvContent.split("\\r?\\n");
         if (lines.length < 1) {
             return 0;
         }
-        int startRow;
-        if (isHeaderLine(lines[0])) {
-            startRow = 1;
-        } else {
-            startRow = 0;
-        }
+        int startRow = isHeaderLine(lines[0]) ? 1 : 0;
         int count = 0;
         for (int i = startRow; i < lines.length; i++) {
             String line = lines[i].trim();
             if (line.isEmpty()) {
                 continue;
             }
-            String[] parts = line.split(",", -1);
+            String[] parts = parseCsvLine(line);
             if (isHeaderDataRow(parts)) {
                 continue;
             }
-            Artifact a = new Artifact();
-            if (isExportFormatRow(parts)) {
-                a.setName(parts.length > 1 && !parts[1].isBlank() ? parts[1].trim() : "未命名");
-                a.setPeriod(parts.length > 2 ? nullIfBlank(parts[2]) : null);
-                a.setType(parts.length > 3 ? nullIfBlank(parts[3]) : null);
-                a.setMaterial(parts.length > 4 ? nullIfBlank(parts[4]) : null);
-                a.setSourceSystem(parts.length > 5 ? nullIfBlank(parts[5]) : null);
-                a.setSourceId(parts.length > 6 ? nullIfBlank(parts[6]) : null);
-                a.setKgSyncStatus(parts.length > 7 && !parts[7].isBlank() ? parts[7].trim() : "PENDING");
-            } else {
-                a.setName(parts.length > 0 && !parts[0].isBlank() ? parts[0].trim() : "未命名");
-                a.setPeriod(parts.length > 1 ? nullIfBlank(parts[1]) : null);
-                a.setType(parts.length > 2 ? nullIfBlank(parts[2]) : null);
-                a.setMaterial(parts.length > 3 ? nullIfBlank(parts[3]) : null);
-                a.setSourceSystem(parts.length > 4 ? nullIfBlank(parts[4]) : null);
-                a.setSourceId(parts.length > 5 ? nullIfBlank(parts[5]) : null);
-                a.setKgSyncStatus(parts.length > 6 && !parts[6].isBlank() ? parts[6].trim() : "PENDING");
-            }
-            a.setUpdatedAt(LocalDateTime.now());
+            Artifact a = buildArtifactFromCsv(parts);
             artifactRepository.save(a);
             count++;
         }
@@ -77,32 +61,172 @@ public class ArtifactImportService {
         return importFromCsvString(content);
     }
 
+    private static Artifact buildArtifactFromCsv(String[] parts) {
+        Artifact a = new Artifact();
+        if (isNewExportFormatRow(parts)) {
+            int museumId = parseInt(parts, 1, 1);
+            String objectId = value(parts, 2, "");
+            if (!StringUtils.hasText(objectId)) {
+                objectId = "IMPORT_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+            }
+            a.setMuseumId(museumId);
+            a.setObjectId(objectId.trim());
+            a.setTitle(value(parts, 3, "未命名"));
+            a.setPeriod(value(parts, 4, "未知"));
+            a.setType(value(parts, 5, "未知"));
+            a.setMaterial(nullIfBlank(value(parts, 6, null)));
+            a.setDescription(value(parts, 7, a.getTitle()));
+            a.setImageUrl(value(parts, 8, ""));
+            a.setDetailUrl(value(parts, 9, a.getImageUrl()));
+        } else if (isLegacyExportFormatRow(parts)) {
+            a.setTitle(value(parts, 1, "未命名"));
+            a.setPeriod(value(parts, 2, "未知"));
+            a.setType(value(parts, 3, "未知"));
+            a.setMaterial(nullIfBlank(value(parts, 4, null)));
+            a.setMuseumId(1);
+            a.setObjectId(resolveObjectId(value(parts, 6, null), a.getTitle()));
+        } else {
+            a.setTitle(value(parts, 0, "未命名"));
+            a.setPeriod(value(parts, 1, "未知"));
+            a.setType(value(parts, 2, "未知"));
+            a.setMaterial(nullIfBlank(value(parts, 3, null)));
+            a.setMuseumId(1);
+            a.setObjectId(resolveObjectId(value(parts, 5, null), a.getTitle()));
+        }
+        fillRequiredDefaults(a);
+        return a;
+    }
+
+    private static void fillRequiredDefaults(Artifact a) {
+        if (!StringUtils.hasText(a.getDescription())) {
+            a.setDescription(a.getTitle());
+        }
+        if (!StringUtils.hasText(a.getMuseum())) {
+            a.setMuseum(museumLabel(a.getMuseumId()));
+        }
+        if (!StringUtils.hasText(a.getLocation())) {
+            a.setLocation(a.getMuseum());
+        }
+        if (!StringUtils.hasText(a.getImageUrl())) {
+            a.setImageUrl("");
+        }
+        if (!StringUtils.hasText(a.getImagePath())) {
+            a.setImagePath(a.getImageUrl());
+        }
+        if (!StringUtils.hasText(a.getDetailUrl())) {
+            a.setDetailUrl(a.getImageUrl());
+        }
+        if (a.getCrawlDate() == null) {
+            a.setCrawlDate(LocalDate.now());
+        }
+        a.setArtifactId("entity:artifact:" + a.getMuseumId() + ":" + a.getObjectId());
+    }
+
     private static boolean isHeaderLine(String firstLine) {
         String s = firstLine.toLowerCase();
-        return s.contains("name") && s.contains("period");
+        return s.contains("name") && (s.contains("period") || s.contains("objectid"));
     }
 
     private static boolean isHeaderDataRow(String[] parts) {
         if (parts.length == 0) {
             return false;
         }
-        String a = parts[0].trim();
-        if ("name".equalsIgnoreCase(a)) {
-            return true;
-        }
-        if ("id".equalsIgnoreCase(a) && parts.length > 1 && "name".equalsIgnoreCase(parts[1].trim())) {
-            return true;
-        }
-        return false;
+        String a = unquote(parts[0].trim());
+        return "name".equalsIgnoreCase(a)
+                || "artifactid".equalsIgnoreCase(a)
+                || ("id".equalsIgnoreCase(a) && parts.length > 1 && "name".equalsIgnoreCase(unquote(parts[1].trim())));
     }
 
-    /** 与导出列一致: id,name,period,type,material,sourceSystem,sourceId,kgSyncStatus */
-    private static boolean isExportFormatRow(String[] parts) {
+    private static boolean isNewExportFormatRow(String[] parts) {
+        if (parts.length < 4) {
+            return false;
+        }
+        return unquote(parts[0].trim()).startsWith("entity:artifact:");
+    }
+
+    private static boolean isLegacyExportFormatRow(String[] parts) {
         return parts.length >= 8 && parts[0].trim().matches("\\d+");
     }
 
+    private static String value(String[] parts, int index, String defaultValue) {
+        if (index >= parts.length) {
+            return defaultValue;
+        }
+        String s = unquote(parts[index].trim());
+        return s.isEmpty() ? defaultValue : s;
+    }
+
+    private static String unquote(String s) {
+        if (s.length() >= 2 && s.startsWith("\"") && s.endsWith("\"")) {
+            return s.substring(1, s.length() - 1).replace("\"\"", "\"");
+        }
+        return s;
+    }
+
+    private static String[] parseCsvLine(String line) {
+        List<String> fields = new ArrayList<>();
+        StringBuilder cur = new StringBuilder();
+        boolean inQuotes = false;
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
+            if (inQuotes) {
+                if (c == '"') {
+                    if (i + 1 < line.length() && line.charAt(i + 1) == '"') {
+                        cur.append('"');
+                        i++;
+                    } else {
+                        inQuotes = false;
+                    }
+                } else {
+                    cur.append(c);
+                }
+            } else if (c == '"') {
+                inQuotes = true;
+            } else if (c == ',') {
+                fields.add(cur.toString());
+                cur.setLength(0);
+            } else {
+                cur.append(c);
+            }
+        }
+        fields.add(cur.toString());
+        return fields.toArray(new String[0]);
+    }
+
+    private static int parseInt(String[] parts, int index, int defaultValue) {
+        if (index >= parts.length) {
+            return defaultValue;
+        }
+        try {
+            return Integer.parseInt(parts[index].trim());
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
+    }
+
     private static String nullIfBlank(String s) {
+        if (s == null) {
+            return null;
+        }
         s = s.trim();
         return s.isEmpty() ? null : s;
+    }
+
+    private static String resolveObjectId(String sourceId, String name) {
+        if (StringUtils.hasText(sourceId)) {
+            return sourceId.trim();
+        }
+        return "IMPORT_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+    }
+
+    private static String museumLabel(Integer museumId) {
+        if (museumId == null) {
+            return "Smithsonian";
+        }
+        return switch (museumId) {
+            case 2 -> "Harvard";
+            case 3 -> "MFA";
+            default -> "Smithsonian";
+        };
     }
 }

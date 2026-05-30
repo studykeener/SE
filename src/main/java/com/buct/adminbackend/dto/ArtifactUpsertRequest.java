@@ -1,15 +1,21 @@
 package com.buct.adminbackend.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 public record ArtifactUpsertRequest(
-        @NotBlank String name,
-        String period,
-        String type,
+        Integer museumId,
+        @NotBlank @Size(max = 255) String objectId,
+        @NotBlank @Size(max = 500) String name,
+        @NotBlank @Size(max = 200) String period,
+        @NotBlank @Size(max = 100) String type,
         String material,
-        String description,
-        String imageUrl,
-        String sourceSystem,
+        @NotBlank String description,
+        @NotBlank String imageUrl,
+        String museum,
+        String location,
+        String detailUrl,
+        @NotBlank String sourceSystem,
         String sourceId,
         String kgSyncStatus
 ) {

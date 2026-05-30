@@ -1,15 +1,18 @@
 package com.buct.adminbackend.controller;
 
 import com.buct.adminbackend.common.ApiResponse;
-import com.buct.adminbackend.entity.LoginLog;
-import com.buct.adminbackend.entity.PlatformUser;
-import com.buct.adminbackend.entity.ReviewContent;
+import com.buct.adminbackend.dto.ReviewQueueItemResponse;
 import com.buct.adminbackend.entity.Artifact;
+import com.buct.adminbackend.entity.User;
+import com.buct.adminbackend.entity.LoginLog;
 import com.buct.adminbackend.repository.ArtifactRepository;
+import com.buct.adminbackend.repository.CommentRepository;
 import com.buct.adminbackend.repository.LoginLogRepository;
-import com.buct.adminbackend.repository.PlatformUserRepository;
-import com.buct.adminbackend.enums.ReviewStatus;
-import com.buct.adminbackend.repository.ReviewContentRepository;
+import com.buct.adminbackend.repository.UserRepository;
+import com.buct.adminbackend.repository.UserUploadPhotoRepository;
+import com.buct.adminbackend.security.PermissionCodes;
+import com.buct.adminbackend.service.AuditLogService;
+import com.buct.adminbackend.service.ReviewQueueService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,30 +23,32 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.WeekFields;
 import java.util.*;
-import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/admin/dashboard")
 @RequiredArgsConstructor
 public class DashboardController {
 
-    private final PlatformUserRepository platformUserRepository;
-    private final ReviewContentRepository reviewContentRepository;
+    private final UserRepository userRepository;
+    private final ReviewQueueService reviewQueueService;
     private final ArtifactRepository artifactRepository;
+    private final CommentRepository commentRepository;
+    private final UserUploadPhotoRepository userUploadPhotoRepository;
     private final LoginLogRepository loginLogRepository;
 
+    private static final List<String> ACCESS_SOURCES = List.of("web", "app");
+
     @GetMapping("/overview")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','DATA_ADMIN','CONTENT_REVIEWER')")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.STATS_VIEW + "')")
     public ApiResponse<Map<String, Object>> overview() {
         Map<String, Object> data = new HashMap<>();
-        long totalUsers = platformUserRepository.count();
-        long pendingReviews = reviewContentRepository.countByReviewStatus(ReviewStatus.PENDING);
-        long recheckReviews = reviewContentRepository.countByReviewStatus(ReviewStatus.RECHECK);
+        long totalUsers = userRepository.count();
+        long pendingReviews = reviewQueueService.countPending();
+        long recheckReviews = reviewQueueService.countRecheck();
         long totalArtifacts = artifactRepository.count();
 
-        long todayNewUsers = platformUserRepository.findAll().stream()
-                .filter(x -> x.getCreatedAt() != null && x.getCreatedAt().toLocalDate().equals(LocalDate.now()))
-                .count();
+        LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
+        long todayNewUsers = userRepository.countByRegisterTimeBetween(startOfDay, startOfDay.plusDays(1));
 
         data.put("totalUsers", totalUsers);
         data.put("todayNewUsers", todayNewUsers);
@@ -51,9 +56,8 @@ public class DashboardController {
         data.put("recheckReviews", recheckReviews);
         data.put("queueBacklog", pendingReviews + recheckReviews);
         data.put("totalArtifacts", totalArtifacts);
-        data.put("onlineUsers", countDistinctRecentLoginUsers(15));
-        data.put("todayContentSubmissions", countTodayContentSubmissions());
-        data.put("loginTrend7d", buildLoginTrend());
+        data.put("onlineUsers", countOnlinePlatformUsers(15));
+        data.put("todayContentSubmissions", reviewQueueService.countTodaySubmissions());
         data.put("accessTrendDay", buildAccessTrend("DAY", 7));
         data.put("accessTrendWeek", buildAccessTrend("WEEK", 8));
         data.put("accessTrendMonth", buildAccessTrend("MONTH", 6));
@@ -61,26 +65,50 @@ public class DashboardController {
         return ApiResponse.ok(data);
     }
 
-    private long countDistinctRecentLoginUsers(int minutes) {
+    /** 近 N 分钟内登录过的前台用户（login_logs USER 成功登录，否则 user.last_login_at / 近期 UGC） */
+    private long countOnlinePlatformUsers(int minutes) {
         LocalDateTime cutoff = LocalDateTime.now().minusMinutes(minutes);
-        return loginLogRepository.findAll().stream()
-                .filter(x -> x.getLoginTime() != null && !x.getLoginTime().isBefore(cutoff))
+        long byLoginLog = loginLogRepository.findAll().stream()
+                .filter(x -> AuditLogService.USER_TYPE_PLATFORM.equalsIgnoreCase(x.getUserType()))
                 .filter(x -> "SUCCESS".equalsIgnoreCase(x.getResult()))
-                .map(LoginLog::getUsername)
+                .filter(x -> x.getLoginTime() != null && !x.getLoginTime().isBefore(cutoff))
+                .map(LoginLog::getUserId)
                 .filter(Objects::nonNull)
                 .distinct()
                 .count();
+        if (byLoginLog > 0) {
+            return byLoginLog;
+        }
+        long byLastLogin = userRepository.countByLastLoginAtGreaterThanEqual(cutoff);
+        if (byLastLogin > 0) {
+            return byLastLogin;
+        }
+        return countDistinctRecentContentUsers(cutoff);
     }
 
-    private long countTodayContentSubmissions() {
-        LocalDate today = LocalDate.now();
-        return reviewContentRepository.findAll().stream()
-                .filter(x -> x.getSubmitTime() != null && x.getSubmitTime().toLocalDate().equals(today))
-                .count();
+    private long countDistinctRecentContentUsers(LocalDateTime cutoff) {
+        Set<Long> userIds = new HashSet<>();
+        commentRepository.findAll().stream()
+                .filter(c -> c.getCreatedAt() != null && !c.getCreatedAt().isBefore(cutoff))
+                .map(c -> c.getUserId())
+                .filter(Objects::nonNull)
+                .forEach(userIds::add);
+        userUploadPhotoRepository.findAll().stream()
+                .filter(p -> p.getCreatedAt() != null && !p.getCreatedAt().isBefore(cutoff))
+                .map(p -> p.getUserId())
+                .filter(Objects::nonNull)
+                .forEach(userIds::add);
+        return userIds.size();
     }
 
+    /** 各子系统日/周/月登录人数（去重 user_id，来源 login_logs USER+SUCCESS） */
     private Map<String, Object> buildAccessTrend(String granularity, int periods) {
-        List<ReviewContent> all = reviewContentRepository.findAll();
+        List<LoginLog> platformLogins = loginLogRepository.findAll().stream()
+                .filter(x -> AuditLogService.USER_TYPE_PLATFORM.equalsIgnoreCase(x.getUserType()))
+                .filter(x -> "SUCCESS".equalsIgnoreCase(x.getResult()))
+                .filter(x -> x.getUserId() != null)
+                .toList();
+
         LocalDate now = LocalDate.now();
         List<String> labels = new ArrayList<>();
         List<LocalDate> periodStart = new ArrayList<>();
@@ -104,20 +132,26 @@ public class DashboardController {
                 periodStart.add(d);
             }
         }
-        Set<String> systems = all.stream().map(ReviewContent::getSourceSystem).filter(Objects::nonNull).collect(Collectors.toCollection(LinkedHashSet::new));
+
         Map<String, List<Long>> series = new LinkedHashMap<>();
-        for (String s : systems) {
+        for (String source : ACCESS_SOURCES) {
             List<Long> vals = new ArrayList<>();
             for (int i = 0; i < periodStart.size(); i++) {
                 LocalDate start = periodStart.get(i);
                 LocalDate end = (i + 1 < periodStart.size()) ? periodStart.get(i + 1) : advance(start, granularity);
-                long c = all.stream().filter(x -> s.equals(x.getSourceSystem()))
-                        .filter(x -> x.getSubmitTime() != null)
-                        .filter(x -> !x.getSubmitTime().toLocalDate().isBefore(start) && x.getSubmitTime().toLocalDate().isBefore(end))
+                LocalDateTime startTime = start.atStartOfDay();
+                LocalDateTime endTime = end.atStartOfDay();
+                long count = platformLogins.stream()
+                        .filter(x -> source.equalsIgnoreCase(resolveLoginSource(x)))
+                        .filter(x -> x.getLoginTime() != null
+                                && !x.getLoginTime().isBefore(startTime)
+                                && x.getLoginTime().isBefore(endTime))
+                        .map(LoginLog::getUserId)
+                        .distinct()
                         .count();
-                vals.add(c);
+                vals.add(count);
             }
-            series.put(s, vals);
+            series.put(source, vals);
         }
         Map<String, Object> out = new HashMap<>();
         out.put("labels", labels);
@@ -125,10 +159,14 @@ public class DashboardController {
         return out;
     }
 
+    private static String resolveLoginSource(LoginLog log) {
+        return log.getSourceSystem();
+    }
+
     private Map<String, Object> buildGrowthTrend(int days) {
         LocalDate start = LocalDate.now().minusDays(days - 1L);
-        List<PlatformUser> users = platformUserRepository.findAll();
-        List<ReviewContent> contents = reviewContentRepository.findAll();
+        List<User> users = userRepository.findAll();
+        List<ReviewQueueItemResponse> contents = reviewQueueService.streamAllForTrend().toList();
         List<Artifact> artifacts = artifactRepository.findAll();
         List<String> labels = new ArrayList<>();
         List<Long> userVals = new ArrayList<>();
@@ -138,9 +176,9 @@ public class DashboardController {
         for (int i = 0; i < days; i++) {
             LocalDate d = start.plusDays(i);
             labels.add(d.toString());
-            u += users.stream().filter(x -> x.getCreatedAt() != null && x.getCreatedAt().toLocalDate().equals(d)).count();
-            c += contents.stream().filter(x -> x.getSubmitTime() != null && x.getSubmitTime().toLocalDate().equals(d)).count();
-            a += artifacts.stream().filter(x -> x.getUpdatedAt() != null && x.getUpdatedAt().toLocalDate().equals(d)).count();
+            u += users.stream().filter(x -> x.getRegisterTime() != null && x.getRegisterTime().toLocalDate().equals(d)).count();
+            c += contents.stream().filter(x -> x.submitTime() != null && x.submitTime().toLocalDate().equals(d)).count();
+            a += artifacts.stream().filter(x -> x.getCrawlDate() != null && x.getCrawlDate().equals(d)).count();
             userVals.add(u);
             contentVals.add(c);
             artifactVals.add(a);
@@ -157,31 +195,5 @@ public class DashboardController {
         if ("DAY".equals(granularity)) return start.plusDays(1);
         if ("WEEK".equals(granularity)) return start.plusWeeks(1);
         return start.plusMonths(1);
-    }
-
-    private List<Map<String, Object>> buildLoginTrend() {
-        List<LoginLog> logs = loginLogRepository.findAll();
-        Map<LocalDate, Long> counts = new HashMap<>();
-        for (int i = 0; i < 7; i++) {
-            counts.put(LocalDate.now().minusDays(i), 0L);
-        }
-        for (LoginLog log : logs) {
-            if (log.getLoginTime() == null) {
-                continue;
-            }
-            LocalDate day = log.getLoginTime().toLocalDate();
-            if (counts.containsKey(day)) {
-                counts.put(day, counts.get(day) + 1);
-            }
-        }
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (int i = 6; i >= 0; i--) {
-            LocalDate d = LocalDate.now().minusDays(i);
-            Map<String, Object> item = new HashMap<>();
-            item.put("date", d.toString());
-            item.put("count", counts.getOrDefault(d, 0L));
-            result.add(item);
-        }
-        return result;
     }
 }

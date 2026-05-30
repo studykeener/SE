@@ -27,6 +27,20 @@ public class SensitiveWord {
     @Column(nullable = false, length = 20)
     private SensitiveWordLevel level = SensitiveWordLevel.LIGHT;
 
-    @Column(nullable = false)
+    @Column(length = 50)
+    private String category;
+
+    @Column(name = "created_by")
+    private Long createdBy;
+
+    @Column(name = "created_at")
     private LocalDateTime createdAt = LocalDateTime.now();
+
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt = LocalDateTime.now();
+
+    @PreUpdate
+    public void onUpdate() {
+        this.updatedAt = LocalDateTime.now();
+    }
 }

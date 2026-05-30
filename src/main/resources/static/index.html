@@ -72,6 +72,19 @@
         }
         .dashboard-pending-card:hover { border-color: var(--primary); }
         .dashboard-pending-card .num { font-size: 28px; font-weight: 800; color: var(--primary); line-height: 1.1; }
+        .rbac-hint { margin:0 0 12px; color:var(--muted); font-size:13px; line-height:1.6; }
+        .rbac-steps { margin:0 0 14px; padding-left:18px; color:var(--muted); font-size:13px; line-height:1.7; }
+        .rbac-perm-groups { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:10px; margin:10px 0; }
+        .rbac-perm-group { border:1px solid var(--line); border-radius:8px; padding:10px; background:#f8fafc; }
+        .rbac-perm-group-title { font-weight:600; font-size:13px; margin-bottom:8px; }
+        .rbac-perm-item { display:flex; align-items:center; gap:6px; font-size:13px; margin:4px 0; cursor:pointer; }
+        .rbac-perm-item input { margin:0; }
+        .rbac-role-tag { display:inline-block; padding:2px 8px; border-radius:6px; font-size:12px; background:#e0e7ff; color:#3730a3; }
+        .rbac-role-tag.sys { background:#fef3c7; color:#92400e; }
+        .user-avatar-thumb { width:32px; height:32px; border-radius:50%; object-fit:cover; vertical-align:middle; background:#e5e7eb; }
+        .user-modal-tabs { display:flex; gap:8px; margin-bottom:10px; }
+        .user-modal-tab { height:32px; border:1px solid var(--line); border-radius:8px; padding:0 12px; cursor:pointer; background:#f8fafc; font-size:13px; }
+        .user-modal-tab.on { background:#dbeafe; border-color:#60a5fa; color:#1d4ed8; font-weight:600; }
     </style>
 </head>
 <body>
@@ -104,8 +117,8 @@
 <div id="recheckModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true">
     <div class="modal-box" onclick="event.stopPropagation()">
         <h3 class="modal-title" id="recheckModalTitle">填写复审备注</h3>
-        <p class="muted" style="font-size:12px; margin:0 0 10px;">可选填写，将记录在审核单中。</p>
-        <textarea id="recheckModalNote" class="modal-textarea" rows="4" placeholder="复审说明（可留空）…" maxlength="2000"></textarea>
+        <p class="muted" id="recheckModalHelp" style="font-size:12px; margin:0 0 10px;">复审说明为必填，将记录在审核单中。</p>
+        <textarea id="recheckModalNote" class="modal-textarea" rows="4" placeholder="请填写复审说明…" maxlength="2000"></textarea>
         <div class="btn-row" style="margin-top:12px; justify-content:flex-end;">
             <button type="button" class="btn btn-light" onclick="closeRecheckModal()">取消</button>
             <button type="button" class="btn btn-primary" onclick="submitRecheckModal()">确定复审</button>
@@ -115,24 +128,33 @@
 
 <div id="userBehaviorModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true">
     <div class="modal-box" style="max-width:980px;" onclick="event.stopPropagation()">
-        <h3 class="modal-title">用户行为记录</h3>
-        <p class="muted" id="userBehaviorModalHint" style="font-size:12px; margin:0 0 8px;">按类型与时间筛选，可新增行为记录。</p>
-        <div class="toolbar" style="margin-bottom:8px;">
-            <input class="input" id="behaviorFilterType" placeholder="行为类型(如 COMMENT)" style="min-width:180px;">
-            <input class="input" id="behaviorFilterFrom" type="datetime-local" title="行为时间起">
-            <input class="input" id="behaviorFilterTo" type="datetime-local" title="行为时间止">
-            <button type="button" class="btn btn-light" onclick="loadUserBehaviors(0)">查询</button>
-            <button type="button" class="btn btn-light" onclick="resetUserBehaviorFilters()">重置</button>
+        <h3 class="modal-title">用户追溯</h3>
+        <p class="muted" id="userBehaviorModalHint" style="font-size:12px; margin:0 0 8px;">从共用业务表（评论、上传、收藏、点赞）聚合展示，用于违规行为溯源。不含登录记录。</p>
+        <div class="user-modal-tabs">
+            <button type="button" class="user-modal-tab on" id="userTabBehaviors" onclick="switchUserTraceTab('behaviors')">行为记录</button>
+            <button type="button" class="user-modal-tab" id="userTabAudit" onclick="switchUserTraceTab('audit')">处罚/权限变更</button>
         </div>
-        <div class="inline" style="margin-bottom:8px;">
-            <input class="input" id="newBehaviorType" placeholder="行为类型(必填，如 COMMENT)" style="min-width:160px;">
-            <input class="input" id="newBehaviorContent" placeholder="行为内容(可选)" style="min-width:220px;">
-            <input class="input" id="newBehaviorSourceSystem" placeholder="来源系统(必填，如 MUSEUM_APP)" style="min-width:180px;">
-            <input class="input" id="newBehaviorSourceRecordId" placeholder="来源记录ID(可选)" style="min-width:140px;">
-            <button type="button" class="btn btn-primary" onclick="createUserBehavior()">新增行为</button>
+        <div id="userTraceBehaviorsPanel">
+            <div class="toolbar" style="margin-bottom:8px;">
+                <select class="select" id="behaviorFilterType" title="行为类型">
+                    <option value="">全部类型</option>
+                    <option value="COMMENT">评论</option>
+                    <option value="UPLOAD">上传照片</option>
+                    <option value="FAVORITE">收藏</option>
+                    <option value="LIKE">点赞</option>
+                </select>
+                <input class="input" id="behaviorFilterFrom" type="datetime-local" title="行为时间起">
+                <input class="input" id="behaviorFilterTo" type="datetime-local" title="行为时间止">
+                <button type="button" class="btn btn-light" onclick="loadUserBehaviors(0)">查询</button>
+                <button type="button" class="btn btn-light" onclick="resetUserBehaviorFilters()">重置</button>
+            </div>
+            <p id="userBehaviorMsg" class="msg"></p>
+            <table id="userBehaviorTable"></table>
         </div>
-        <p id="userBehaviorMsg" class="msg"></p>
-        <table id="userBehaviorTable"></table>
+        <div id="userTraceAuditPanel" style="display:none;">
+            <p id="userAuditMsg" class="msg muted" style="font-size:12px;"></p>
+            <table id="userAuditTable"></table>
+        </div>
         <div class="btn-row" style="margin-top:12px; justify-content:flex-end;">
             <button type="button" class="btn btn-light" onclick="closeUserBehaviorModal()">关闭</button>
         </div>
@@ -149,12 +171,9 @@
                 <button class="menu-btn" data-page="rbacPage" onclick="switchPage('rbacPage', this)">角色权限管理</button>
                 <button class="menu-btn" data-page="userPage" onclick="switchPage('userPage', this)">平台用户管理</button>
                 <button class="menu-btn" data-page="reviewPage" onclick="openReviewSectionFromMenu('queue', this)">内容审核</button>
-                <button class="menu-btn" id="sensitiveMenuBtn" onclick="openReviewSectionFromMenu('sensitive', this)">敏感词库</button>
-                <button class="menu-btn" id="reviewStatsMenuBtn" onclick="openReviewSectionFromMenu('stats', this)">审核统计</button>
                 <button class="menu-btn" data-page="artifactPage" onclick="switchPage('artifactPage', this)">文物数据管理</button>
                 <button class="menu-btn" data-page="kgPage" onclick="switchPage('kgPage', this)">知识图谱管理</button>
                 <button class="menu-btn" data-page="backupPage" onclick="switchPage('backupPage', this)">数据备份与恢复</button>
-                <button class="menu-btn" data-page="integrationPage" onclick="switchPage('integrationPage', this)">子系统 API 代理</button>
                 <button class="menu-btn" data-page="logPage" onclick="switchPage('logPage', this)">日志管理</button>
             </div>
         </aside>
@@ -169,13 +188,23 @@
             <section class="content">
                 <div id="dashboardPage" class="page active">
                     <div class="panel">
-                        <h3>欢迎使用后台管理系统</h3>
+                        <h3>系统监控看板</h3>
+                        <p class="muted" style="font-size:12px; margin-top:0;">关键指标来自现有业务表实时聚合；访问量按各子系统<strong>日登录人数</strong>统计，Web/App 登录成功时直接写入 <code>login_logs</code>（<code>source_system</code> 必填：<code>web</code>/<code>app</code>）。</p>
                         <div class="toolbar" style="margin-top:10px;">
                             <button type="button" class="btn btn-light" onclick="loadDashboard()">刷新统计</button>
                         </div>
                         <div id="dashboardOverviewStats" class="inline" style="margin-top:8px;"></div>
                         <div class="panel" style="margin-top:10px;">
-                            <h3 style="font-size:14px;">访问量趋势（日/周/月）</h3>
+                            <h3 style="font-size:14px;">访问量趋势（日/周/月 · 登录人数）</h3>
+                            <div class="toolbar" style="margin-bottom:8px;">
+                                <label class="muted" style="font-size:12px; display:inline-flex; align-items:center; gap:6px;">
+                                    子系统
+                                    <select class="select" id="dashboardAccessSource" onchange="onDashboardAccessSourceChange()" style="min-width:140px;">
+                                        <option value="web">WEB 子系统</option>
+                                        <option value="app">APP 子系统</option>
+                                    </select>
+                                </label>
+                            </div>
                             <div class="muted" id="dashboardAccessSummary" style="font-size:12px; margin-bottom:6px;"></div>
                             <div id="dashboardAccessCharts"></div>
                         </div>
@@ -188,14 +217,11 @@
                 <div id="adminPage" class="page">
                     <div class="panel">
                         <h3>管理员管理</h3>
-                        <p class="muted" style="font-size:12px; margin-top:0;">仅超级管理员可访问。系统预置 <code>admin</code> 不可删除、不可降级、不可禁用。</p>
+                        <p class="muted" style="font-size:12px; margin-top:0;">每个管理员仅拥有一个角色，在创建或修改时选择即可。系统预置 <code>admin</code> 不可删除、不可降级、不可禁用。</p>
                         <div class="toolbar">
                             <input class="input" id="adminFilterUsername" placeholder="按用户名筛选" style="min-width:160px;">
                             <select class="select" id="adminFilterRole" title="按角色筛选">
                                 <option value="">全部角色</option>
-                                <option value="SUPER_ADMIN">超级管理员</option>
-                                <option value="DATA_ADMIN">数据管理员</option>
-                                <option value="CONTENT_REVIEWER">内容审核员</option>
                             </select>
                             <select class="select" id="adminFilterStatus" title="按状态筛选">
                                 <option value="">全部状态</option>
@@ -209,10 +235,8 @@
                         <div class="inline">
                             <input class="input" id="newAdminUsername" placeholder="新管理员用户名">
                             <input class="input" id="newAdminPassword" placeholder="新管理员密码">
-                            <select class="select" id="newAdminRole">
-                                <option value="SUPER_ADMIN">超级管理员</option>
-                                <option value="DATA_ADMIN">数据管理员</option>
-                                <option value="CONTENT_REVIEWER">内容审核员</option>
+                            <select class="select" id="newAdminRole" title="角色（每人仅一个）">
+                                <option value="">加载角色中…</option>
                             </select>
                             <button class="btn btn-primary" onclick="createAdmin()">创建管理员</button>
                         </div>
@@ -220,10 +244,8 @@
                             <span>修改 <strong id="editAdminNameLabel"></strong>：</span>
                             <input type="hidden" id="editAdminId">
                             <input type="hidden" id="editAdminUsername">
-                            <select class="select" id="editAdminRole" title="角色">
-                                <option value="SUPER_ADMIN">超级管理员</option>
-                                <option value="DATA_ADMIN">数据管理员</option>
-                                <option value="CONTENT_REVIEWER">内容审核员</option>
+                            <select class="select" id="editAdminRole" title="角色（每人仅一个）">
+                                <option value="">加载角色中…</option>
                             </select>
                             <select class="select" id="editAdminStatus" title="状态">
                                 <option value="ENABLED">正常</option>
@@ -239,30 +261,68 @@
                 </div>
                 <div id="rbacPage" class="page">
                     <div class="panel">
-                        <h3>角色与权限管理</h3>
+                        <h3>角色权限管理</h3>
+                        <p class="rbac-hint">本页只负责<strong>定义角色和权限</strong>。给管理员指定角色请到「管理员管理」——创建或修改账号时选一个角色即可（每人仅一个角色）。</p>
+                        <ol class="rbac-steps">
+                            <li>下方可查看全部角色；系统内置角色（超级管理员、内容审核员、数据管理员）不可删除。</li>
+                            <li>「新建角色」时直接勾选该角色拥有的权限，一次保存完成。</li>
+                            <li>已有角色需要调整时，在「调整已有角色权限」里选择角色并修改勾选。</li>
+                        </ol>
+                        <div class="toolbar">
+                            <button class="btn btn-light" type="button" onclick="loadRolesAndPermissions()">刷新列表</button>
+                        </div>
+                        <div id="rbacRoleList" class="muted" style="margin-bottom:12px;">加载中…</div>
                         <p id="rbacMsg" class="msg" style="display:none;"></p>
-                        <table id="roleTable" style="display:none;"></table>
-                        <table id="permissionTable" style="display:none;"></table>
+                    </div>
+                    <div class="panel">
+                        <h3>新建角色</h3>
+                        <div class="inline" style="margin-bottom:8px;">
+                            <input id="rbacNewRoleName" class="input" placeholder="角色名称（中文，如：运营专员）" style="min-width:200px;">
+                            <input id="rbacNewRoleCode" class="input" placeholder="角色编码（英文大写，如：CUSTOM_OPS）" style="min-width:220px;">
+                            <input id="rbacNewRoleDesc" class="input" placeholder="描述（可选）" style="min-width:160px;">
+                        </div>
+                        <div class="inline" style="margin-bottom:8px;">
+                            <span class="muted">勾选该角色拥有的权限：</span>
+                            <button class="btn btn-light" type="button" onclick="selectRbacPerms('rbac-new-perm-cb', true)">全选</button>
+                            <button class="btn btn-light" type="button" onclick="selectRbacPerms('rbac-new-perm-cb', false)">全不选</button>
+                            <button class="btn btn-primary" type="button" onclick="createRole()">创建角色并保存权限</button>
+                        </div>
+                        <div id="rbacNewPermCheckboxes" class="rbac-perm-groups muted">加载权限中…</div>
+                        <div id="rbacCreateMsg" class="msg"></div>
+                    </div>
+                    <div class="panel">
+                        <h3>调整已有角色权限</h3>
+                        <div class="inline" style="margin-bottom:8px;">
+                            <label class="muted">选择角色：</label>
+                            <select id="rbacRoleSelect" class="select" style="min-width:260px;" onchange="onRbacRoleSelectChange()">
+                                <option value="">请先刷新列表</option>
+                            </select>
+                            <button class="btn btn-light" type="button" onclick="selectRbacPerms('rbac-edit-perm-cb', true)">全选</button>
+                            <button class="btn btn-light" type="button" onclick="selectRbacPerms('rbac-edit-perm-cb', false)">全不选</button>
+                            <button class="btn btn-primary" type="button" onclick="assignRolePermissions()">保存权限</button>
+                        </div>
+                        <div id="rbacPermCheckboxes" class="rbac-perm-groups muted">请先选择角色</div>
+                        <div id="rbacAssignPermMsg" class="msg"></div>
                     </div>
                 </div>
                 <div id="userPage" class="page">
                     <div class="panel">
-                        <h3>统一用户管理</h3>
-                        <p class="muted" style="font-size:12px; margin-top:0;">统一管理全平台用户，按用户名/来源/注册时间筛选，支持批量操作、细粒度权限与行为追溯。</p>
+                        <h3>平台用户管理</h3>
+                        <p class="muted" style="font-size:12px; margin-top:0;">管理知识服务 Web 端与掌上博物馆 App 的前台用户（对应数据库 <code>user</code> 表）。支持按用户名、来源、注册时间筛选，批量启用/禁用，以及禁止评论、禁止上传等细粒度限制。</p>
                         <div class="toolbar" style="margin-bottom:8px;">
-                            <input class="input" id="filterUserName" placeholder="用户名(模糊)">
-                            <select class="select" id="filterUserSource" title="来源">
+                            <input class="input" id="filterUserName" placeholder="用户名（模糊）" style="min-width:140px;">
+                            <select class="select" id="filterUserSource" title="用户来源">
                                 <option value="">全部来源</option>
-                                <option value="WEB">Web 端</option>
-                                <option value="APP">手机端</option>
+                                <option value="web">知识服务 Web</option>
+                                <option value="app">掌上博物馆 App</option>
                             </select>
-                            <select class="select" id="filterUserStatus" title="状态">
+                            <select class="select" id="filterUserStatus" title="账号状态">
                                 <option value="">全部状态</option>
-                                <option value="ENABLED">启用</option>
-                                <option value="DISABLED">禁用</option>
+                                <option value="ENABLED">正常</option>
+                                <option value="DISABLED">已禁用</option>
                             </select>
-                            <input class="input" id="filterUserCreatedFrom" type="datetime-local" title="注册起">
-                            <input class="input" id="filterUserCreatedTo" type="datetime-local" title="注册止">
+                            <input class="input" id="filterUserCreatedFrom" type="datetime-local" title="注册时间起">
+                            <input class="input" id="filterUserCreatedTo" type="datetime-local" title="注册时间止">
                             <button class="btn btn-primary" onclick="loadPlatformUsers(0)">查询</button>
                             <button class="btn btn-light" onclick="resetUserFilters()">重置</button>
                             <button class="btn btn-light" onclick="loadPlatformUsers()">刷新</button>
@@ -270,36 +330,53 @@
                         <div class="toolbar" id="userBatchBar">
                             <button class="btn btn-light" onclick="userBatchStatus('ENABLED')">批量启用</button>
                             <button class="btn btn-light" onclick="userBatchStatus('DISABLED')">批量禁用</button>
+                            <button class="btn btn-light" onclick="userBatchRestrict('comment', false)">批量禁止评论</button>
+                            <button class="btn btn-light" onclick="userBatchRestrict('comment', true)">批量恢复评论</button>
+                            <button class="btn btn-light" onclick="userBatchRestrict('upload', false)">批量禁止上传</button>
+                            <button class="btn btn-light" onclick="userBatchRestrict('upload', true)">批量恢复上传</button>
                             <button class="btn btn-danger" onclick="userBatchDelete()">批量删除</button>
                         </div>
-                        <div class="inline" id="userCreateBar">
-                            <input class="input" id="newUserUsername" placeholder="用户名">
-                            <input class="input" id="newUserDisplayName" placeholder="显示名(可选)">
-                            <input class="input" id="newUserEmail" placeholder="邮箱">
-                            <input class="input" id="newUserPhone" placeholder="手机号(可选)">
-                            <select class="select" id="newUserSource">
-                                <option value="WEB">Web 端</option>
-                                <option value="APP">手机端</option>
+                        <div class="inline" id="userCreateBar" style="flex-wrap:wrap;">
+                            <input class="input" id="newUserUsername" placeholder="用户名 *" style="min-width:120px;">
+                            <input class="input" id="newUserDisplayName" placeholder="昵称" style="min-width:100px;">
+                            <input class="input" id="newUserEmail" type="email" placeholder="邮箱" style="min-width:160px;">
+                            <input class="input" id="newUserPhone" placeholder="手机号" style="min-width:130px;">
+                            <input class="input" id="newUserAvatarUrl" placeholder="头像 URL" style="min-width:180px;">
+                            <select class="select" id="newUserSex" title="性别">
+                                <option value="">性别未知</option>
+                                <option value="1">男</option>
+                                <option value="2">女</option>
                             </select>
-                            <input class="input" id="newUserSourceUserId" placeholder="来源用户ID">
+                            <select class="select" id="newUserSource" title="用户来源">
+                                <option value="web">知识服务 Web</option>
+                                <option value="app">掌上博物馆 App</option>
+                            </select>
+                            <input class="input" id="newUserPassword" type="password" placeholder="初始密码（留空默认 ChangeMe123）" style="min-width:200px;">
                             <button class="btn btn-primary" onclick="createPlatformUser()">创建用户</button>
                         </div>
                         <div class="inline" id="userEditPanel" style="display:none; margin-top:8px; padding:10px; background:#f8fafc; border:1px solid var(--line); border-radius:8px; width:100%; flex-wrap:wrap;">
                             <input type="hidden" id="editUserId">
                             <span>编辑 <strong id="editUserNameLabel"></strong>：</span>
                             <input class="input" id="editUserUsername" placeholder="用户名" style="min-width:120px;">
-                            <input class="input" id="editUserDisplayName" placeholder="显示名" style="min-width:120px;">
-                            <input class="input" id="editUserEmail" type="email" placeholder="邮箱" style="min-width:180px;">
-                            <input class="input" id="editUserPhone" placeholder="手机号" style="min-width:140px;">
-                            <select class="select" id="editUserSource">
-                                <option value="WEB">Web 端</option>
-                                <option value="APP">手机端</option>
+                            <input class="input" id="editUserDisplayName" placeholder="昵称" style="min-width:100px;">
+                            <input class="input" id="editUserEmail" type="email" placeholder="邮箱" style="min-width:160px;">
+                            <input class="input" id="editUserPhone" placeholder="手机号" style="min-width:130px;">
+                            <input class="input" id="editUserAvatarUrl" placeholder="头像 URL" style="min-width:180px;">
+                            <select class="select" id="editUserSex" title="性别">
+                                <option value="">未知</option>
+                                <option value="1">男</option>
+                                <option value="2">女</option>
                             </select>
-                            <input class="input" id="editUserSourceUserId" placeholder="来源用户ID" style="min-width:140px;">
-                            <select class="select" id="editUserStatus">
-                                <option value="ENABLED">启用</option>
-                                <option value="DISABLED">禁用</option>
+                            <select class="select" id="editUserSource" title="用户来源">
+                                <option value="web">知识服务 Web</option>
+                                <option value="app">掌上博物馆 App</option>
                             </select>
+                            <select class="select" id="editUserStatus" title="账号状态" onchange="toggleUserDisabledReason()">
+                                <option value="ENABLED">正常</option>
+                                <option value="DISABLED">已禁用</option>
+                            </select>
+                            <input class="input" id="editUserDisabledReason" placeholder="禁用原因（禁用时填写）" style="min-width:180px; display:none;">
+                            <span class="muted" id="editUserLastLogin" style="font-size:12px;"></span>
                             <label class="muted" style="font-size:12px; display:inline-flex; align-items:center; gap:4px;"><input type="checkbox" id="editUserComment" checked> 允许评论</label>
                             <label class="muted" style="font-size:12px; display:inline-flex; align-items:center; gap:4px;"><input type="checkbox" id="editUserUpload" checked> 允许上传</label>
                             <button class="btn btn-primary" onclick="saveEditPlatformUser()">保存</button>
@@ -324,7 +401,7 @@
                             <button class="btn btn-light" id="reviewTabStats" onclick="setReviewSection('stats')">审核统计</button>
                         </div>
                         <div id="reviewQueueSection">
-                        <p class="muted" style="font-size:12px; margin:0 0 6px;">可按状态、类型、来源、提交人、关键词、提交时间、风险分组合筛选。</p>
+                        <p class="muted" style="font-size:12px; margin:0 0 6px;">审核数据来自队友共享表 <code>comment</code>（评论）与 <code>user_upload_photo</code>（照片）。下方「新增待审核」仅用于演示时模拟队友写入。</p>
                         <div class="toolbar">
                             <select class="select" id="reviewFilterStatus" title="审核状态">
                                 <option value="">全部状态</option>
@@ -355,20 +432,21 @@
                             <button class="btn btn-light" onclick="resetReviewFilters()">重置</button>
                         </div>
                         <div class="inline">
-                            <select class="select" id="newReviewType">
+                            <select class="select" id="newReviewType" onchange="syncNewReviewFields()">
                                 <option value="COMMENT">评论</option>
                                 <option value="IMAGE">图片</option>
-                                <option value="VIDEO">视频</option>
-                                <option value="AUDIO">音频</option>
                             </select>
                             <select class="select" id="newReviewSourceSystem" title="来源子系统">
                                 <option value="WEB">WEB</option>
                                 <option value="APP">APP</option>
                             </select>
-                            <input class="input" id="newReviewSubmitter" placeholder="提交人">
+                            <input class="input" id="newReviewUserId" type="number" min="1" placeholder="用户ID" style="width:100px;">
+                            <input class="input" id="newReviewSubmitter" placeholder="或用户名">
+                            <input class="input" id="newReviewMuseumId" type="number" min="1" placeholder="馆别ID" style="width:90px;">
+                            <input class="input" id="newReviewObjectId" placeholder="文物编号 objectId" style="min-width:120px;">
                             <span class="muted" style="font-size:12px; align-self:center;">风险分由系统自动计算</span>
-                            <input class="input" id="newReviewUrl" placeholder="内容URL(可选)">
-                            <input class="input" id="newReviewText" placeholder="内容文本" style="min-width:280px;">
+                            <input class="input" id="newReviewUrl" placeholder="图片URL(照片必填)">
+                            <input class="input" id="newReviewText" placeholder="评论正文 / 照片描述" style="min-width:280px;">
                             <button class="btn btn-primary" onclick="createReviewContent()">新增待审核</button>
                         </div>
                         <div class="toolbar" style="margin-top:8px;">
@@ -463,6 +541,24 @@
                 <div id="artifactPage" class="page">
                     <div class="panel">
                         <h3>文物数据管理</h3>
+                        <div class="toolbar" style="margin-bottom:8px; flex-wrap:wrap;">
+                            <input class="input" id="filterArtifactKeyword" placeholder="关键词（名称/编号/年代/类型/材质/介绍）" style="min-width:220px;">
+                            <select class="select" id="filterArtifactSource" title="所属馆别">
+                                <option value="">全部馆别</option>
+                                <option value="smithsonian">史密森尼</option>
+                                <option value="harvard">哈佛</option>
+                                <option value="mfa">波士顿美术博物馆</option>
+                            </select>
+                            <input class="input" id="filterArtifactPeriod" placeholder="年代" style="min-width:90px;">
+                            <input class="input" id="filterArtifactType" placeholder="类型" style="min-width:90px;">
+                            <select class="select" id="filterArtifactKgStatus" title="图谱同步">
+                                <option value="">全部同步状态</option>
+                                <option value="PENDING">未同步</option>
+                                <option value="SYNCED">已同步</option>
+                            </select>
+                            <button type="button" class="btn btn-primary" onclick="loadArtifacts()">查询</button>
+                            <button type="button" class="btn btn-light" onclick="resetArtifactFilters()">重置</button>
+                        </div>
                         <div class="toolbar">
                             <button class="btn btn-light" onclick="loadArtifacts()">刷新列表</button>
                             <button class="btn btn-light" onclick="exportArtifacts()">导出CSV</button>
@@ -474,22 +570,58 @@
                             </label>
                             <button class="btn btn-primary" onclick="uploadArtifactCsv()">上传导入</button>
                         </div>
-                        <div class="inline">
-                            <input class="input" id="artifactId" placeholder="编辑时填ID(新增可空)">
-                            <input class="input" id="artifactName" placeholder="文物名称">
-                            <input class="input" id="artifactPeriod" placeholder="年代">
-                            <input class="input" id="artifactType" placeholder="类型">
-                            <input class="input" id="artifactMaterial" placeholder="材质">
-                            <input class="input" id="artifactImageUrl" placeholder="图片URL">
-                            <select class="select" id="artifactSourceSystem" title="来源子系统">
-                                <option value="">请选择来源</option>
-                                <option value="artifact-system">artifact-system</option>
-                                <option value="user-system">user-system</option>
-                                <option value="WEB">WEB</option>
-                                <option value="APP">APP</option>
+                        <div class="panel" style="margin-top:10px; padding:10px; background:#f0fdf4; border:1px solid #86efac; border-radius:8px;">
+                            <h4 style="margin:0 0 8px; font-size:14px;">新增文物</h4>
+                            <p class="muted" style="font-size:12px; margin:0 0 8px;">带 * 为必填项。同一馆别下文物编号不可重复。</p>
+                            <div class="inline" style="flex-wrap:wrap;">
+                                <input class="input" id="newArtifactObjectId" placeholder="文物编号 *" style="min-width:160px;" title="馆方藏品编号，同一馆别不可重复">
+                                <select class="select" id="newArtifactSourceSystem" title="所属馆别 *">
+                                    <option value="">所属馆别 *</option>
+                                    <option value="smithsonian">史密森尼</option>
+                                    <option value="harvard">哈佛</option>
+                                    <option value="mfa">波士顿美术博物馆</option>
+                                </select>
+                                <input class="input" id="newArtifactName" placeholder="文物名称 *" style="min-width:140px;">
+                                <input class="input" id="newArtifactPeriod" placeholder="年代 *" style="min-width:100px;">
+                                <input class="input" id="newArtifactType" placeholder="类型 *" style="min-width:100px;">
+                                <input class="input" id="newArtifactMaterial" placeholder="材质" style="min-width:100px;">
+                                <input class="input" id="newArtifactImageUrl" placeholder="图片链接 *" style="min-width:200px;">
+                                <input class="input" id="newArtifactDetailUrl" placeholder="详情页链接（可空，默认同图片）" style="min-width:200px;">
+                            </div>
+                            <textarea class="modal-textarea" id="newArtifactDescription" rows="2" placeholder="文物介绍 *" style="margin-top:8px; min-height:56px;"></textarea>
+                            <div class="inline" style="margin-top:8px; flex-wrap:wrap;">
+                                <select class="select" id="newArtifactKgStatus" title="知识图谱同步状态">
+                                    <option value="PENDING">图谱同步：未同步</option>
+                                    <option value="SYNCED">图谱同步：已同步</option>
+                                </select>
+                                <button type="button" class="btn btn-primary" onclick="createArtifact()">新增文物</button>
+                                <button type="button" class="btn btn-light" onclick="resetNewArtifactForm()">清空</button>
+                            </div>
+                        </div>
+                        <div class="inline" id="artifactEditPanel" style="display:none; margin-top:10px; padding:10px; background:#f8fafc; border:1px solid var(--line); border-radius:8px; width:100%; flex-wrap:wrap;">
+                            <input type="hidden" id="editArtifactApiId">
+                            <span style="width:100%; margin-bottom:4px;">编辑文物：<strong id="editArtifactKeyLabel"></strong></span>
+                            <input class="input" id="editArtifactObjectId" placeholder="文物编号 *" style="min-width:160px;">
+                            <select class="select" id="editArtifactSourceSystem" title="所属馆别 *">
+                                <option value="smithsonian">史密森尼</option>
+                                <option value="harvard">哈佛</option>
+                                <option value="mfa">波士顿美术博物馆</option>
                             </select>
-                            <input class="input" id="artifactKgStatus" placeholder="图谱同步状态">
-                            <button class="btn btn-primary" onclick="saveArtifact()">保存文物</button>
+                            <input class="input" id="editArtifactName" placeholder="文物名称 *" style="min-width:140px;">
+                            <input class="input" id="editArtifactPeriod" placeholder="年代 *" style="min-width:100px;">
+                            <input class="input" id="editArtifactType" placeholder="类型 *" style="min-width:100px;">
+                            <input class="input" id="editArtifactMaterial" placeholder="材质" style="min-width:100px;">
+                            <input class="input" id="editArtifactImageUrl" placeholder="图片链接 *" style="min-width:200px;">
+                            <input class="input" id="editArtifactDetailUrl" placeholder="详情页链接" style="min-width:200px;">
+                            <select class="select" id="editArtifactKgStatus" title="知识图谱同步状态">
+                                <option value="PENDING">图谱同步：未同步</option>
+                                <option value="SYNCED">图谱同步：已同步</option>
+                            </select>
+                            <textarea class="modal-textarea" id="editArtifactDescription" rows="2" placeholder="文物介绍 *" style="width:100%; min-height:56px; margin-top:4px;"></textarea>
+                            <div class="inline" style="width:100%; margin-top:6px;">
+                                <button type="button" class="btn btn-primary" onclick="saveEditArtifact()">保存修改</button>
+                                <button type="button" class="btn btn-light" onclick="cancelEditArtifact()">取消</button>
+                            </div>
                         </div>
                         <p id="artifactMsg" class="msg"></p>
                         <table id="artifactTable"></table>
@@ -499,48 +631,141 @@
                     <div class="panel">
                         <h3>知识图谱管理</h3>
                         <p class="muted" style="margin-top:0; font-size:12px;">
-                            本页通过本后台代理调用知识图谱子系统 API，实现实体/关系/三元组在线编辑，并可触发图数据库同步任务。
+                            直接管理 graph-db 图数据库中的节点与边（与队友导入格式一致）。实体以 <code>uri</code> 标识，三元组为 <code>主语 —关系类型→ 宾语</code>。
                         </p>
+                        <p id="kgOverview" class="msg muted" style="font-size:12px; margin:6px 0;"></p>
                         <div class="toolbar" style="margin-bottom:8px;">
-                            <button class="btn btn-light" onclick="loadKgEndpoints()">查看对接配置</button>
-                            <button class="btn btn-light" onclick="loadKgSyncJobs()">刷新同步任务</button>
                             <button class="btn btn-primary" onclick="triggerKgSync()">触发图数据库同步</button>
                         </div>
-                        <pre class="json-out" id="kgEndpointOut" style="max-height:180px;">点击“查看对接配置”查看 kg baseUrl 与路径…</pre>
 
                         <div class="panel" style="margin-top:10px;">
-                            <h3 style="font-size:14px;">三元组数据在线编辑</h3>
+                            <h3 style="font-size:14px;">数据列表</h3>
                             <div class="inline">
-                                <select class="select" id="kgResourceType" style="min-width:160px;" onchange="loadKgResourceList()">
+                                <select class="select" id="kgResourceType" style="min-width:100px;" onchange="onKgResourceTypeChange()">
                                     <option value="entities">实体</option>
-                                    <option value="relations">关系</option>
+                                    <option value="relationTypes">关系类型</option>
                                     <option value="triples">三元组</option>
+                                </select>
+                                <select class="select" id="kgEntityLabel" style="min-width:120px;" onchange="kgResetPageAndLoad()">
+                                    <!-- 由 populateKgEntityLabelSelects() 填充 -->
+                                </select>
+                                <select class="select" id="kgTripleRelationFilter" style="min-width:160px; display:none;" onchange="kgResetPageAndLoad()">
+                                    <option value="">全部关系类型</option>
+                                </select>
+                                <select class="select" id="kgSort" style="min-width:110px;" onchange="kgResetPageAndLoad()">
+                                    <option value="name">按名称</option>
+                                    <option value="updated">最新优先</option>
+                                </select>
+                                <input class="input" id="kgKeyword" placeholder="搜索名称或 uri" style="min-width:160px;" onkeydown="if(event.key==='Enter'){kgResetPageAndLoad();}">
+                                <button class="btn btn-light" onclick="kgResetPageAndLoad()">搜索</button>
+                                <select class="select" id="kgPageSize" style="min-width:90px;" onchange="kgResetPageAndLoad()">
+                                    <option value="20">20条/页</option>
+                                    <option value="50">50条/页</option>
+                                    <option value="100">100条/页</option>
                                 </select>
                                 <button class="btn btn-light" onclick="loadKgResourceList()">刷新列表</button>
                             </div>
                             <table id="kgTable" style="margin-top:8px;"></table>
+                            <div id="kgPagination" class="toolbar" style="margin-top:8px; align-items:center; gap:8px;"></div>
                         </div>
 
-                        <div class="panel" style="margin-top:10px;">
-                            <h3 style="font-size:14px;">新增 / 修改</h3>
-                            <p class="muted" style="font-size:12px; margin:0 0 8px;">编辑 JSON 后保存。包含 <code>id</code> 时按更新处理，不含 <code>id</code> 时按新增处理。</p>
-                            <textarea id="kgEditPayload" class="modal-textarea" rows="8" placeholder='例如：{"name":"青花瓷"}'></textarea>
-                            <div class="btn-row" style="justify-content:flex-end;">
-                                <button class="btn btn-light" onclick="fillKgSamplePayload()">填充示例</button>
-                                <button class="btn btn-primary" onclick="saveKgResource()">保存</button>
+                        <div class="panel" style="margin-top:10px;" id="kgEditPanels">
+                            <div id="kgEntityFormPanel">
+                                <h3 style="font-size:14px;">新增 / 修改实体</h3>
+                                <input type="hidden" id="kgEntityEditUri" value="">
+                                <div class="inline" style="flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                                    <label class="muted" style="font-size:12px;">实体类型
+                                        <select class="select" id="kgFormEntityLabel" onchange="onKgFormEntityLabelChange()" style="display:block; margin-top:4px; min-width:140px;">
+                                            <!-- 由 populateKgEntityLabelSelects() 填充 -->
+                                        </select>
+                                    </label>
+                                    <span id="kgEntityFieldsArtifact">
+                                        <label class="muted" style="font-size:12px;">馆别 ID
+                                            <input class="input" id="kgEntMuseumId" placeholder="如 1" style="display:block; margin-top:4px; max-width:100px;">
+                                        </label>
+                                        <label class="muted" style="font-size:12px;">文物编号 object_id
+                                            <input class="input" id="kgEntObjectId" placeholder="唯一编号" style="display:block; margin-top:4px; min-width:180px;">
+                                        </label>
+                                        <label class="muted" style="font-size:12px;">名称 title
+                                            <input class="input" id="kgEntTitle" placeholder="文物名称" style="display:block; margin-top:4px; min-width:200px;">
+                                        </label>
+                                    </span>
+                                    <span id="kgEntityFieldsMuseum" style="display:none;">
+                                        <label class="muted" style="font-size:12px;">博物馆 ID
+                                            <input class="input" id="kgEntMuseumKey" placeholder="如 1、2、3" style="display:block; margin-top:4px; max-width:100px;">
+                                        </label>
+                                        <label class="muted" style="font-size:12px;">名称 name
+                                            <input class="input" id="kgEntMuseumName" placeholder="博物馆名称" style="display:block; margin-top:4px; min-width:200px;">
+                                        </label>
+                                    </span>
+                                    <span id="kgEntityFieldsGeneric" style="display:none;">
+                                        <label class="muted" style="font-size:12px;">uri（唯一标识，与 graph-db 一致）
+                                            <input class="input" id="kgEntUri" placeholder="如 entity:dynasty:ming明" style="display:block; margin-top:4px; min-width:320px;">
+                                        </label>
+                                        <label class="muted" style="font-size:12px;">名称 name
+                                            <input class="input" id="kgEntName" placeholder="显示名称" style="display:block; margin-top:4px; min-width:200px;">
+                                        </label>
+                                    </span>
+                                </div>
+                                <p id="kgEntityUriPreview" class="muted" style="font-size:11px; margin:0 0 8px; word-break:break-all;"></p>
+                                <div class="btn-row">
+                                    <button type="button" class="btn btn-light" onclick="resetKgEntityForm()">清空（新增模式）</button>
+                                    <button type="button" class="btn btn-primary" onclick="saveKgEntityForm()">保存到 Neo4j</button>
+                                </div>
+                            </div>
+                            <div id="kgRelTypeFormPanel" style="display:none;">
+                                <h3 style="font-size:14px;">新增关系类型</h3>
+                                <div class="inline" style="flex-wrap:wrap; gap:8px; margin-bottom:8px; align-items:flex-end;">
+                                    <label class="muted" style="font-size:12px;">类型名称（camelCase，与 graph-db 一致）
+                                        <input class="input" id="kgRelTypeName" placeholder="如 belongsToMuseum" style="display:block; margin-top:4px; min-width:220px;">
+                                    </label>
+                                </div>
+                                <p class="muted" style="font-size:11px; margin:0 0 8px;">图数据库中关系类型即边的类型名，无中文名。新增后可在「三元组」页选用；删除时可选择是否同时删除该类型的全部边。</p>
+                                <div class="btn-row">
+                                    <button type="button" class="btn btn-light" onclick="resetKgRelTypeForm()">清空</button>
+                                    <button type="button" class="btn btn-primary" onclick="saveKgRelTypeForm()">保存关系类型</button>
+                                </div>
+                            </div>
+                            <div id="kgRelationFormPanel" style="display:none;">
+                                <h3 style="font-size:14px;">新增 / 修改三元组</h3>
+                                <input type="hidden" id="kgRelationEditId" value="">
+                                <div class="inline" style="flex-wrap:wrap; gap:8px; margin-bottom:8px; align-items:flex-end;">
+                                    <label class="muted" style="font-size:12px;">关系类型
+                                        <select class="select" id="kgRelType" style="display:block; margin-top:4px; min-width:220px;"></select>
+                                    </label>
+                                    <label class="muted" style="font-size:12px;">或自定义类型名
+                                        <input class="input" id="kgRelTypeCustom" placeholder="如 belongsToMuseum" style="display:block; margin-top:4px; min-width:160px;">
+                                    </label>
+                                </div>
+                                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:8px;">
+                                    <div>
+                                        <p class="muted" style="font-size:12px; margin:0 0 4px;"><b>主语（起点实体）</b></p>
+                                        <div class="inline" style="margin-bottom:4px;">
+                                            <select class="select" id="kgRelFromLabel" style="min-width:120px;"></select>
+                                            <input class="input" id="kgRelFromSearch" placeholder="搜索名称" style="min-width:100px;">
+                                            <button type="button" class="btn btn-light" onclick="loadKgEntityPicker('from')">加载</button>
+                                        </div>
+                                        <select class="select" id="kgRelFromUri" size="6" style="width:100%; min-height:120px;"></select>
+                                    </div>
+                                    <div>
+                                        <p class="muted" style="font-size:12px; margin:0 0 4px;"><b>宾语（终点实体）</b></p>
+                                        <div class="inline" style="margin-bottom:4px;">
+                                            <select class="select" id="kgRelToLabel" style="min-width:120px;"></select>
+                                            <input class="input" id="kgRelToSearch" placeholder="搜索名称" style="min-width:100px;">
+                                            <button type="button" class="btn btn-light" onclick="loadKgEntityPicker('to')">加载</button>
+                                        </div>
+                                        <select class="select" id="kgRelToUri" size="6" style="width:100%; min-height:120px;"></select>
+                                    </div>
+                                </div>
+                                <div class="btn-row">
+                                    <button type="button" class="btn btn-light" onclick="resetKgRelationForm()">清空（新增模式）</button>
+                                    <button type="button" class="btn btn-primary" onclick="saveKgRelationForm()">保存到 Neo4j</button>
+                                </div>
                             </div>
                         </div>
 
                         <div class="panel" style="margin-top:10px;">
-                            <h3 style="font-size:14px;">删除</h3>
-                            <div class="inline">
-                                <input class="input" id="kgDeleteId" placeholder="输入要删除的 ID（数字）" style="max-width:220px;">
-                                <button class="btn btn-danger" onclick="deleteKgResourceById()">按 ID 删除</button>
-                            </div>
-                        </div>
-
-                        <div class="panel" style="margin-top:10px;">
-                            <h3 style="font-size:14px;">同步任务</h3>
+                            <h3 style="font-size:14px;">同步任务记录</h3>
                             <table id="kgSyncJobTable"></table>
                         </div>
 
@@ -561,7 +786,7 @@
                             <button class="btn btn-light" id="backupRemoveTableBtn" style="display:none;" onclick="removeSelectedBackupTable()">移除表</button>
                             <input class="input" id="backupTables" placeholder="指定表列表（自动填充）" style="min-width:260px; display:none;" readonly>
                             <button class="btn btn-primary" onclick="createManualBackup()">立即备份</button>
-                            <button class="btn btn-light" onclick="loadBackupRecords()">刷新记录</button>
+                            <button class="btn btn-light" onclick="loadBackupPage()">刷新记录</button>
                         </div>
                         <div class="inline" style="margin-bottom:8px; align-items:center;">
                             <label class="muted" style="display:inline-flex; align-items:center; gap:4px;"><input type="checkbox" id="backupAutoEnabled"> 自动备份</label>
@@ -570,34 +795,17 @@
                             <button class="btn btn-light" onclick="saveBackupConfig()">保存策略</button>
                         </div>
                         <p id="backupMsg" class="msg"></p>
-                        <table id="backupTable"></table>
-                    </div>
-                </div>
-                <div id="integrationPage" class="page">
-                    <div class="panel">
-                        <h3>子系统 API 代理联调</h3>
-                        <p class="muted" style="margin-top:0;">本模块通过本后台 <strong>统一转发</strong> 到用户子系统/文物子系统，不直接连对方数据库。在 <code>application.yml</code> 中切换
-                            <code>integration.mode: mock | real</code>；<code>real</code> 时请将 baseUrl 改为对方已部署地址。</p>
-                        <div class="toolbar">
-                            <button class="btn btn-light" onclick="loadIntegrationStatus()">刷新状态</button>
-                            <button class="btn btn-light" onclick="proxyUsers()">代理: 拉取用户列表</button>
-                            <button class="btn btn-light" onclick="proxyArtifacts()">代理: 拉取文物列表</button>
-                            <button class="btn btn-primary" onclick="proxyReviewCallback()">代理: 回传审核结果(模板)</button>
+                        <div style="overflow-x:auto;">
+                            <table id="backupTable"></table>
                         </div>
-                        <p class="muted" style="margin:8px 0 0; font-size:12px;">通用转发 POST <code>/api/admin/integrations/proxy/forward</code> 示例在下方；body:
-                            <code>{"system":"user","subPath":"/api/xxx","method":"GET","body":null}</code>
-                        </p>
-                        <div class="inline" style="margin-top:8px;">
-                            <input class="input" id="fwdSubPath" placeholder="subPath 如 /api/health" style="min-width:200px;">
-                            <select class="select" id="fwdSystem" style="width:120px;">
-                                <option value="user">user 子系统</option>
-                                <option value="artifact">artifact 子系统</option>
-                                <option value="kg">kg 子系统</option>
-                            </select>
-                            <button class="btn btn-primary" onclick="proxyForwardGet()">GET 转发</button>
+                        <div class="panel" style="margin-top:16px;">
+                            <h3 style="font-size:14px;">恢复操作日志</h3>
+                            <p class="muted" style="font-size:12px; margin-top:0;">仅超级管理员可执行恢复；每次恢复均记录于此。</p>
+                            <div class="toolbar" style="margin-bottom:8px;">
+                                <button class="btn btn-light" onclick="loadRestoreLogs()">刷新恢复日志</button>
+                            </div>
+                            <table id="restoreLogTable"></table>
                         </div>
-                        <p id="integrationMsg" class="msg"></p>
-                        <pre class="json-out" id="integrationOut">点击上方按钮后在此显示 JSON 响应…</pre>
                     </div>
                 </div>
                 <div id="logPage" class="page">
@@ -633,10 +841,15 @@
 
 <script>
     let jwtToken = localStorage.getItem("jwtToken") || "";
+    let artifactRows = [];
     let currentAppRole = "";
+    let currentPermissions = [];
+    let rbacRolesCache = [];
+    let rbacPermsCache = [];
     let currentReviewSection = "queue";
     let backupTableOptions = [];
     let backupSelectedTables = [];
+    let backupCanRestore = false;
     let reviewStatsLastData = null;
     let reviewStatsReviewerSortDesc = true;
     /** 审核员表：'all' 全部 | 'contentReviewer' 仅内容审核员角色 */
@@ -646,21 +859,69 @@
     const pageTitles = {
         dashboardPage: "系统概览",
         adminPage: "管理员管理",
-        rbacPage: "角色与权限",
-        userPage: "统一用户",
+        rbacPage: "角色权限管理",
+        userPage: "平台用户管理",
         reviewPage: "内容审核",
         artifactPage: "文物数据",
         kgPage: "知识图谱管理",
         backupPage: "数据备份与恢复",
-        integrationPage: "子系统 API 代理",
         logPage: "日志与统计"
     };
 
     function roleToZh(r) {
+        const cached = (rbacRolesCache || []).find(x => x.code === r);
+        if (cached) return cached.name || r;
         if (r === "SUPER_ADMIN") return "超级管理员";
         if (r === "DATA_ADMIN") return "数据管理员";
         if (r === "CONTENT_REVIEWER") return "内容审核员";
         return r;
+    }
+    function moduleToZh(m) {
+        const map = {
+            USER: "用户管理",
+            REVIEW: "内容审核",
+            ARTIFACT: "文物数据",
+            LOG: "日志",
+            STATS: "统计看板",
+            ROLE: "角色权限",
+            ADMIN: "管理员",
+            BACKUP: "备份恢复",
+            OTHER: "其他"
+        };
+        return map[m] || m || "其他";
+    }
+    function permissionToZh(p) {
+        const map = {
+            USER_VIEW: "查看用户",
+            USER_EDIT: "编辑用户",
+            USER_DELETE: "删除用户",
+            USER_BAN: "禁用用户",
+            REVIEW_VIEW: "查看审核",
+            REVIEW_ACTION: "审核操作",
+            ARTIFACT_VIEW: "查看文物",
+            ARTIFACT_EDIT: "编辑文物",
+            ARTIFACT_DELETE: "删除文物",
+            ARTIFACT_IMPORT_EXPORT: "导入导出文物",
+            LOG_VIEW: "查看日志",
+            STATS_VIEW: "查看看板",
+            ROLE_VIEW: "查看角色权限",
+            ROLE_CREATE: "创建角色",
+            ROLE_ASSIGN: "分配角色",
+            PERMISSION_ASSIGN: "分配权限",
+            ADMIN_MANAGE: "管理员管理",
+            BACKUP_MANAGE: "备份恢复"
+        };
+        if (!p) return "";
+        if (p.code && map[p.code]) return map[p.code];
+        if (p.name && !/^[A-Z][A-Z0-9_]+$/.test(p.name)) return p.name;
+        if (p.description && !/^[A-Z][A-Z0-9_]+$/.test(p.description)) return p.description;
+        return p.name || p.code || "";
+    }
+    function roleDisplayName(role) {
+        if (!role) return "";
+        const zh = roleToZh(role.code);
+        if (zh !== role.code) return `${role.name || zh}（${zh}）`;
+        return role.name || role.code;
     }
     function statusToZh(s) {
         if (s === "ENABLED") return "启用";
@@ -668,9 +929,55 @@
         return s;
     }
     function sourceToZh(s) {
-        if (s === "APP") return "手机端";
-        if (s === "WEB") return "Web 端";
-        return s;
+        const v = String(s || "").toLowerCase();
+        if (v === "app") return "掌上博物馆";
+        if (v === "web") return "知识服务";
+        return s || "";
+    }
+    function sexToZh(s) {
+        const n = s == null || s === "" ? null : Number(s);
+        if (n === 1) return "男";
+        if (n === 2) return "女";
+        return "未知";
+    }
+    function behaviorTypeToZh(t) {
+        const v = String(t || "").toUpperCase();
+        if (v === "COMMENT") return "评论";
+        if (v === "UPLOAD") return "上传照片";
+        if (v === "FAVORITE") return "收藏";
+        if (v === "LIKE") return "点赞";
+        return t || "";
+    }
+    function activitySourceTableToZh(t) {
+        if (t === "comment") return "评论表";
+        if (t === "user_upload_photo") return "照片表";
+        if (t === "user_favorite") return "收藏表";
+        if (t === "user_like") return "点赞表";
+        return t || "";
+    }
+    function userStatusCodeToZh(code) {
+        if (code === 1) return "正常";
+        if (code === 0) return "已禁用";
+        return code == null ? "—" : String(code);
+    }
+    function boolFlagToZh(v) {
+        if (v === true) return "允许";
+        if (v === false) return "禁止";
+        return "—";
+    }
+    function formatUserAvatar(url) {
+        if (!url) return "—";
+        const safe = escapeHtml(url);
+        return `<img class="user-avatar-thumb" src="${safe}" alt="" onerror="this.outerHTML='—'">`;
+    }
+    function normalizeUserSourceValue(s) {
+        const v = String(s || "web").toLowerCase();
+        return v === "app" ? "app" : "web";
+    }
+    function toggleUserDisabledReason() {
+        const st = document.getElementById("editUserStatus")?.value;
+        const el = document.getElementById("editUserDisabledReason");
+        if (el) el.style.display = st === "DISABLED" ? "inline-block" : "none";
     }
     function localDateTimeToApi(s) {
         if (!s) return null;
@@ -707,7 +1014,8 @@
             CREATE_SENSITIVE_WORD: "新增敏感词",
             UPDATE_SENSITIVE_WORD: "更新敏感词",
             DELETE_SENSITIVE_WORD: "删除敏感词",
-            UPDATE_REVIEW_STRATEGY: "更新自动审核策略"
+            UPDATE_REVIEW_STRATEGY: "更新自动审核策略",
+            RESTORE_BACKUP: "恢复数据库备份"
         };
         return m[t] || t;
     }
@@ -733,8 +1041,27 @@
         if (rmax !== "") p.set("riskMax", rmax);
         return p;
     }
+    function selectedReviewTargets() {
+        return Array.from(document.querySelectorAll(".review-pick:checked")).map(el => ({
+            sourceTable: el.getAttribute("data-source-table"),
+            id: Number(el.getAttribute("data-id"))
+        }));
+    }
     function selectedReviewIds() {
-        return Array.from(document.querySelectorAll(".review-pick:checked")).map(el => Number(el.getAttribute("data-id")));
+        return selectedReviewTargets().map(t => t.id);
+    }
+    function sourceTableToZh(t) {
+        if (t === "comment") return "评论表";
+        if (t === "user_upload_photo") return "照片表";
+        return t || "";
+    }
+    function syncNewReviewFields() {
+        const type = document.getElementById("newReviewType").value;
+        const isComment = type === "COMMENT";
+        const mid = document.getElementById("newReviewMuseumId");
+        const oid = document.getElementById("newReviewObjectId");
+        if (mid) mid.placeholder = isComment ? "馆别ID(必填)" : "馆别ID(可选)";
+        if (oid) oid.placeholder = isComment ? "文物编号(必填)" : "文物编号(可选)";
     }
     function toggleAllReviews(checked) {
         document.querySelectorAll(".review-pick").forEach(el => { el.checked = checked; });
@@ -783,16 +1110,29 @@
         if (btnEl) btnEl.classList.add("active");
         document.getElementById("pageTitle").textContent = pageTitles[pageId] || "后台管理";
         if (pageId === "kgPage") {
-            if (document.getElementById("kgEndpointOut") && document.getElementById("kgEndpointOut").textContent.includes("点击")) {
-                loadKgEndpoints();
-            }
+            populateKgEntityLabelSelects();
+            loadKgRelationTypeOptions();
+            loadKgOverview();
+            syncKgToolbarVisibility();
+            onKgFormEntityLabelChange();
+            ["kgEntMuseumId", "kgEntObjectId", "kgEntTitle", "kgEntMuseumKey", "kgEntUri", "kgEntName"].forEach(id => {
+                const el = document.getElementById(id);
+                if (el && !el.dataset.kgBound) {
+                    el.addEventListener("input", updateKgEntityUriPreview);
+                    el.dataset.kgBound = "1";
+                }
+            });
             loadKgResourceList();
-            loadKgSyncJobs();
+            loadKgSyncJobs(true);
         }
         if (pageId === "backupPage") {
-            loadBackupConfig();
-            loadBackupTables();
-            loadBackupRecords();
+            loadBackupPage();
+        }
+        if (pageId === "rbacPage") {
+            loadRolesAndPermissions();
+        }
+        if (pageId === "adminPage" && hasPerm("ADMIN_MANAGE")) {
+            loadAdminRoleOptions();
         }
     }
     function setReviewSection(section) {
@@ -868,11 +1208,12 @@
             jwtToken = result.data.token;
             localStorage.setItem("jwtToken", jwtToken);
             const me = result.data.adminUser;
-            currentAppRole = me.role;
-            setMenuByRole(me.role);
+            currentAppRole = me.role || me.roleCode || "";
+            currentPermissions = result.data.permissions || [];
+            setMenuByPermissions(currentPermissions, me.role);
             document.getElementById("me").textContent = `${me.username} ｜ ${roleToZh(me.role)}`;
             showApp();
-            loadAfterLogin(me.role);
+            loadAfterLogin(currentPermissions, me.role);
             setMsg("loginMsg", "登录成功");
         } catch (e) {
             setMsg("loginMsg", e.message, false);
@@ -907,23 +1248,28 @@
         setIf("reviewFilterRiskMax", "");
     }
 
-    function loadAfterLogin(role) {
+    function hasPerm(code) {
+        return (currentPermissions || []).includes(code);
+    }
+
+    function loadAfterLogin(permissions, role) {
         resetQuerySelectionsOnLogin();
         const ubar = document.getElementById("userCreateBar");
-        if (role === "SUPER_ADMIN") { if (ubar) ubar.style.display = "flex"; }
+        if (hasPerm("USER_EDIT")) { if (ubar) ubar.style.display = "flex"; }
         else { if (ubar) ubar.style.display = "none"; }
-        if (role === "SUPER_ADMIN" || role === "CONTENT_REVIEWER") { loadDashboard(); }
-        if (role === "SUPER_ADMIN") { loadAdmins(); loadRolesAndPermissions(); }
-        if (role === "SUPER_ADMIN") { loadPlatformUsers(); loadArtifacts(); loadIntegrationStatus(); }
-        if (role === "DATA_ADMIN") { loadArtifacts(); }
-        if (role === "SUPER_ADMIN" || role === "CONTENT_REVIEWER") {
+        if (hasPerm("STATS_VIEW")) { loadDashboard(); }
+        if (hasPerm("ROLE_VIEW") || hasPerm("PERMISSION_ASSIGN")) { loadRolesAndPermissions(); }
+        if (hasPerm("ADMIN_MANAGE")) { loadAdminRoleOptions().then(() => loadAdmins()); }
+        if (hasPerm("USER_VIEW")) { loadPlatformUsers(); }
+        if (hasPerm("ARTIFACT_VIEW")) { loadArtifacts(); }
+        if (hasPerm("REVIEW_VIEW") || hasPerm("REVIEW_ACTION")) {
             loadReviewContents();
             loadReviewStats();
             loadSensitiveWords();
-            if (role === "SUPER_ADMIN" || role === "CONTENT_REVIEWER") { loadReviewStrategy(); }
+            if (hasPerm("REVIEW_ACTION")) { loadReviewStrategy(); }
             setReviewSection("queue");
         }
-        if (role === "SUPER_ADMIN") { loadLogs(); }
+        if (hasPerm("LOG_VIEW")) { loadLogs(); }
     }
 
     function logout() {
@@ -936,12 +1282,14 @@
     async function tryAutoLogin() {
         if (!jwtToken) return;
         try {
-            const me = await api("/api/admin/auth/me");
-            currentAppRole = me.role;
-            setMenuByRole(me.role);
+            const resp = await api("/api/admin/auth/me");
+            const me = resp.adminUser || resp;
+            currentAppRole = me.role || me.roleCode || "";
+            currentPermissions = resp.permissions || [];
+            setMenuByPermissions(currentPermissions, me.role);
             document.getElementById("me").textContent = `${me.username} ｜ ${roleToZh(me.role)}`;
             showApp();
-            loadAfterLogin(me.role);
+            loadAfterLogin(currentPermissions, me.role);
         } catch (e) {
             jwtToken = "";
             currentAppRole = "";
@@ -1020,7 +1368,7 @@
         if (Object.keys(payload).length === 0) { setMsg("adminMsg", "请调整状态、角色或填写新密码", false); return; }
         try {
             await api(`/api/admin/users/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
-            setMsg("adminMsg", "已更新", true);
+            setMsg("adminMsg", "已更新；若修改了角色，对方需重新登录后权限才会生效", true);
             cancelEditAdmin();
             await loadAdmins();
         } catch (e) { setMsg("adminMsg", e.message, false); }
@@ -1037,13 +1385,18 @@
 
     async function createAdmin() {
         try {
+            const role = document.getElementById("newAdminRole").value;
             const payload = {
                 username: document.getElementById("newAdminUsername").value.trim(),
                 password: document.getElementById("newAdminPassword").value.trim(),
-                role: document.getElementById("newAdminRole").value
+                role
             };
+            if (!payload.username || !payload.password) { setMsg("adminMsg", "请填写用户名和密码", false); return; }
+            if (!role) { setMsg("adminMsg", "请选择角色", false); return; }
             await api("/api/admin/users", { method: "POST", body: JSON.stringify(payload) });
-            setMsg("adminMsg", "创建管理员成功");
+            document.getElementById("newAdminUsername").value = "";
+            document.getElementById("newAdminPassword").value = "";
+            setMsg("adminMsg", "创建管理员成功", true);
             await loadAdmins();
         } catch (e) { setMsg("adminMsg", e.message, false); }
     }
@@ -1105,9 +1458,11 @@
                 if (next) next.disabled = userListPage >= totalPages - 1;
             }
             document.getElementById("userTable").innerHTML =
-                "<tr><th><input type=\"checkbox\" onchange=\"toggleAllUsers(this.checked)\" title=\"全选\"></th><th>ID</th><th>用户名</th><th>显示名</th><th>邮箱</th><th>来源</th><th>来源ID</th><th>状态</th><th>注册时间</th><th>评论</th><th>上传</th><th>操作</th></tr>" +
+                "<tr><th><input type=\"checkbox\" onchange=\"toggleAllUsers(this.checked)\" title=\"全选\"></th><th>ID</th><th>头像</th><th>用户名</th><th>昵称</th><th>邮箱</th><th>手机</th><th>性别</th><th>来源</th><th>状态</th><th>注册时间</th><th>最近登录</th><th>评论</th><th>上传</th><th>操作</th></tr>" +
                 list.map(x => {
-                    return `<tr><td><input type="checkbox" class="user-pick" data-id="${x.id}"></td><td>${x.id}</td><td>${x.username || ""}</td><td>${x.displayName || ""}</td><td>${x.email || ""}</td><td>${sourceToZh(x.sourceSystem)}</td><td>${x.sourceUserId || ""}</td><td>${statusToZh(x.status)}</td><td>${x.createdAt || ""}</td><td>${x.commentAllowed ? "允许" : "禁止"}</td><td>${x.uploadAllowed ? "允许" : "禁止"}</td><td><button class="btn btn-light" onclick="openEditUser(${x.id})">编辑</button> <button class="btn btn-light" onclick="openUserBehaviorModal(${x.id}, '${String(x.username || '').replace(/'/g, '')}')">行为</button> <button class="btn btn-danger" onclick="deletePlatformUser(${x.id}, '${String(x.username || "").replace(/'/g, "")}')">删除</button></td></tr>`;
+                    const uname = String(x.username || "").replace(/'/g, "");
+                    const lastLogin = x.lastLoginAt ? `${x.lastLoginAt}${x.lastLoginIp ? " / " + x.lastLoginIp : ""}` : "—";
+                    return `<tr><td><input type="checkbox" class="user-pick" data-id="${x.id}"></td><td>${x.id}</td><td>${formatUserAvatar(x.avatarUrl)}</td><td>${escapeHtml(x.username || "")}</td><td>${escapeHtml(x.displayName || "")}</td><td>${escapeHtml(x.email || "")}</td><td>${escapeHtml(x.phone || "")}</td><td>${sexToZh(x.sex)}</td><td>${sourceToZh(x.sourceSystem)}</td><td>${statusToZh(x.status)}</td><td>${x.createdAt || ""}</td><td>${escapeHtml(lastLogin)}</td><td>${x.commentAllowed ? "允许" : "禁止"}</td><td>${x.uploadAllowed ? "允许" : "禁止"}</td><td><button class="btn btn-light" onclick="openEditUser(${x.id})">编辑</button> <button class="btn btn-light" onclick="openUserBehaviorModal(${x.id}, '${uname}')">追溯</button> <button class="btn btn-danger" onclick="deletePlatformUser(${x.id}, '${uname}')">删除</button></td></tr>`;
                 }).join("");
             setMsg("userMsg", "加载成功", true);
         } catch (e) { setMsg("userMsg", e.message, false); }
@@ -1117,15 +1472,24 @@
         try { u = await api("/api/admin/unified-users/" + id); } catch (e) { setMsg("userMsg", e.message, false); return; }
         document.getElementById("editUserId").value = u.id;
         document.getElementById("editUserNameLabel").textContent = u.username;
-        document.getElementById("editUserUsername").value = u.username;
+        document.getElementById("editUserUsername").value = u.username || "";
         document.getElementById("editUserDisplayName").value = u.displayName || "";
         document.getElementById("editUserEmail").value = u.email || "";
         document.getElementById("editUserPhone").value = u.phone || "";
-        document.getElementById("editUserSource").value = u.sourceSystem;
-        document.getElementById("editUserSourceUserId").value = u.sourceUserId || "";
+        document.getElementById("editUserAvatarUrl").value = u.avatarUrl || "";
+        document.getElementById("editUserSex").value = u.sex == null ? "" : String(u.sex);
+        document.getElementById("editUserSource").value = normalizeUserSourceValue(u.sourceSystem);
         document.getElementById("editUserStatus").value = u.status;
+        document.getElementById("editUserDisabledReason").value = u.disabledReason || "";
         document.getElementById("editUserComment").checked = !!u.commentAllowed;
         document.getElementById("editUserUpload").checked = !!u.uploadAllowed;
+        const ll = document.getElementById("editUserLastLogin");
+        if (ll) {
+            ll.textContent = u.lastLoginAt
+                ? `最近登录：${u.lastLoginAt}${u.lastLoginIp ? "（" + u.lastLoginIp + "）" : ""}`
+                : "最近登录：—";
+        }
+        toggleUserDisabledReason();
         document.getElementById("userEditPanel").style.display = "inline-flex";
     }
     function cancelEditUser() {
@@ -1133,19 +1497,21 @@
     }
     async function saveEditPlatformUser() {
         const id = document.getElementById("editUserId").value;
-        const sourceUserId = document.getElementById("editUserSourceUserId").value.trim();
-        if (!sourceUserId) { setMsg("userMsg", "来源用户ID不能为空", false); return; }
+        const sexVal = document.getElementById("editUserSex").value;
         const payload = {
             username: document.getElementById("editUserUsername").value.trim(),
             displayName: document.getElementById("editUserDisplayName").value.trim() || null,
             email: document.getElementById("editUserEmail").value.trim() || null,
             phone: document.getElementById("editUserPhone").value.trim() || null,
+            avatarUrl: document.getElementById("editUserAvatarUrl").value.trim() || null,
+            sex: sexVal === "" ? null : Number(sexVal),
             sourceSystem: document.getElementById("editUserSource").value,
-            sourceUserId,
             status: document.getElementById("editUserStatus").value,
+            disabledReason: document.getElementById("editUserDisabledReason").value.trim() || null,
             commentAllowed: document.getElementById("editUserComment").checked,
             uploadAllowed: document.getElementById("editUserUpload").checked
         };
+        if (!payload.username) { setMsg("userMsg", "用户名不能为空", false); return; }
         try {
             await api("/api/admin/unified-users/" + id, { method: "PUT", body: JSON.stringify(payload) });
             setMsg("userMsg", "已保存", true);
@@ -1164,13 +1530,43 @@
     async function userBatchStatus(st) {
         const ids = selectedUserIds();
         if (!ids.length) { setMsg("userMsg", "请先勾选用户", false); return; }
-        if (!confirm("确定将选中 " + ids.length + " 个用户置为" + (st === "ENABLED" ? "启用" : "禁用") + "？")) return;
+        let reason = null;
+        if (st === "DISABLED") {
+            reason = prompt("请输入禁用原因（可留空，默认“批量禁用”）：", "批量禁用");
+            if (reason === null) return;
+        }
+        if (!confirm("确定将选中 " + ids.length + " 个用户置为" + (st === "ENABLED" ? "正常" : "已禁用") + "？")) return;
         const sp = new URLSearchParams();
         ids.forEach(x => sp.append("ids", String(x)));
         sp.set("status", st);
+        if (reason) sp.set("reason", reason);
         try {
             await api("/api/admin/unified-users/batch/status?" + sp.toString(), { method: "PATCH" });
             setMsg("userMsg", "批量状态已更新", true);
+            await loadPlatformUsers();
+        } catch (e) { setMsg("userMsg", e.message, false); }
+    }
+    async function userBatchRestrict(kind, allowed) {
+        const ids = selectedUserIds();
+        if (!ids.length) { setMsg("userMsg", "请先勾选用户", false); return; }
+        const label = kind === "comment" ? "评论" : "上传";
+        if (!confirm(`确定对选中 ${ids.length} 个用户${allowed ? "恢复" : "禁止"}${label}权限？`)) return;
+        let reason = null;
+        if (!allowed) {
+            reason = prompt(`请输入限制${label}的原因（可留空）：`, `批量禁止${label}`);
+            if (reason === null) return;
+        }
+        try {
+            for (const id of ids) {
+                const u = await api("/api/admin/unified-users/" + id);
+                const payload = {
+                    commentAllowed: kind === "comment" ? allowed : !!u.commentAllowed,
+                    uploadAllowed: kind === "upload" ? allowed : !!u.uploadAllowed,
+                    reason
+                };
+                await api(`/api/admin/unified-users/${id}/permissions`, { method: "PATCH", body: JSON.stringify(payload) });
+            }
+            setMsg("userMsg", `批量${allowed ? "恢复" : "禁止"}${label}完成`, true);
             await loadPlatformUsers();
         } catch (e) { setMsg("userMsg", e.message, false); }
     }
@@ -1187,23 +1583,26 @@
 
     async function createPlatformUser() {
         try {
-            const sourceUserId = document.getElementById("newUserSourceUserId").value.trim();
-            if (!sourceUserId) { setMsg("userMsg", "来源用户ID不能为空", false); return; }
+            const username = document.getElementById("newUserUsername").value.trim();
+            const sexVal = document.getElementById("newUserSex").value;
+            const password = document.getElementById("newUserPassword").value.trim();
             const payload = {
-                username: document.getElementById("newUserUsername").value.trim(),
+                username,
                 displayName: document.getElementById("newUserDisplayName").value.trim() || null,
                 email: document.getElementById("newUserEmail").value.trim() || null,
                 phone: document.getElementById("newUserPhone").value.trim() || null,
-                sourceSystem: document.getElementById("newUserSource").value,
-                sourceUserId
+                avatarUrl: document.getElementById("newUserAvatarUrl").value.trim() || null,
+                sex: sexVal === "" ? null : Number(sexVal),
+                sourceSystem: document.getElementById("newUserSource").value
             };
+            if (password) payload.password = password;
+            if (!username) { setMsg("userMsg", "用户名不能为空", false); return; }
             await api("/api/admin/unified-users", { method: "POST", body: JSON.stringify(payload) });
-            setMsg("userMsg", "创建统一用户成功");
-            document.getElementById("newUserUsername").value = "";
-            document.getElementById("newUserDisplayName").value = "";
-            document.getElementById("newUserEmail").value = "";
-            document.getElementById("newUserPhone").value = "";
-            document.getElementById("newUserSourceUserId").value = "";
+            setMsg("userMsg", "创建用户成功", true);
+            ["newUserUsername","newUserDisplayName","newUserEmail","newUserPhone","newUserAvatarUrl","newUserPassword"].forEach(id => {
+                const el = document.getElementById(id); if (el) el.value = "";
+            });
+            document.getElementById("newUserSex").value = "";
             await loadPlatformUsers();
         } catch (e) { setMsg("userMsg", e.message, false); }
     }
@@ -1211,11 +1610,24 @@
     let userBehaviorUserId = null;
     let userBehaviorPage = 0;
     const userBehaviorSize = 20;
+    let userTraceTab = "behaviors";
+    function switchUserTraceTab(tab) {
+        userTraceTab = tab;
+        document.getElementById("userTabBehaviors")?.classList.toggle("on", tab === "behaviors");
+        document.getElementById("userTabAudit")?.classList.toggle("on", tab === "audit");
+        const bp = document.getElementById("userTraceBehaviorsPanel");
+        const ap = document.getElementById("userTraceAuditPanel");
+        if (bp) bp.style.display = tab === "behaviors" ? "block" : "none";
+        if (ap) ap.style.display = tab === "audit" ? "block" : "none";
+        if (tab === "audit") loadUserPermissionAudit();
+    }
     function openUserBehaviorModal(userId, username) {
         userBehaviorUserId = userId;
         userBehaviorPage = 0;
+        userTraceTab = "behaviors";
+        switchUserTraceTab("behaviors");
         const hint = document.getElementById("userBehaviorModalHint");
-        if (hint) hint.textContent = `用户 ${username || userId}（ID=${userId}）行为记录`;
+        if (hint) hint.textContent = `用户 ${username || userId}（ID=${userId}）— 共用表行为记录与处罚/权限变更追溯`;
         const m = document.getElementById("userBehaviorModal");
         if (m) {
             m.classList.add("open");
@@ -1231,12 +1643,15 @@
             m.setAttribute("aria-hidden", "true");
         }
         userBehaviorUserId = null;
-        const msg = document.getElementById("userBehaviorMsg");
-        if (msg) { msg.textContent = ""; msg.className = "msg"; }
+        ["userBehaviorMsg", "userAuditMsg"].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) { el.textContent = ""; el.className = "msg"; }
+        });
     }
     function resetUserBehaviorFilters(reload = true) {
-        const ids = ["behaviorFilterType", "behaviorFilterFrom", "behaviorFilterTo"];
-        ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
+        const typeEl = document.getElementById("behaviorFilterType");
+        if (typeEl) typeEl.value = "";
+        ["behaviorFilterFrom", "behaviorFilterTo"].forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
         if (reload && userBehaviorUserId != null) loadUserBehaviors(0);
     }
     function buildUserBehaviorQuery() {
@@ -1263,39 +1678,34 @@
             const table = document.getElementById("userBehaviorTable");
             if (table) {
                 table.innerHTML =
-                    "<tr><th>ID</th><th>类型</th><th>内容</th><th>来源系统</th><th>来源记录ID</th><th>时间</th></tr>" +
-                    list.map(x => `<tr><td>${x.id}</td><td>${x.behaviorType || ""}</td><td>${x.behaviorContent || ""}</td><td>${x.sourceSystem || ""}</td><td>${x.sourceRecordId || ""}</td><td>${x.behaviorTime || ""}</td></tr>`).join("");
+                    "<tr><th>记录ID</th><th>数据表</th><th>类型</th><th>内容/摘要</th><th>文物</th><th>来源</th><th>审核状态</th><th>时间</th></tr>" +
+                    list.map(x => {
+                        const artifact = (x.museumId != null && x.objectId) ? `${x.museumId} / ${escapeHtml(x.objectId)}` : "—";
+                        const status = x.reviewStatus ? reviewStatusToZh(x.reviewStatus) : "—";
+                        return `<tr><td>${x.recordId}</td><td>${activitySourceTableToZh(x.sourceTable)}</td><td>${behaviorTypeToZh(x.activityType)}</td><td>${escapeHtml(x.summary || "")}</td><td>${artifact}</td><td>${x.source ? sourceToZh(x.source) : "—"}</td><td>${status}</td><td>${x.activityTime || ""}</td></tr>`;
+                    }).join("");
             }
             const m = document.getElementById("userBehaviorMsg");
-            if (m) { m.textContent = `共 ${total} 条行为记录（第 ${userBehaviorPage + 1} 页）`; m.className = "msg ok"; }
+            if (m) { m.textContent = `共 ${total} 条（来自 comment / user_upload_photo / user_favorite / user_like，第 ${userBehaviorPage + 1} 页）`; m.className = "msg ok"; }
         } catch (e) {
             const m = document.getElementById("userBehaviorMsg");
             if (m) { m.textContent = e.message; m.className = "msg err"; }
         }
     }
-    async function createUserBehavior() {
+    async function loadUserPermissionAudit() {
         if (userBehaviorUserId == null) return;
-        const behaviorType = document.getElementById("newBehaviorType").value.trim();
-        const sourceSystem = document.getElementById("newBehaviorSourceSystem").value.trim();
-        if (!behaviorType || !sourceSystem) {
-            const m = document.getElementById("userBehaviorMsg");
-            if (m) { m.textContent = "行为类型和来源系统不能为空"; m.className = "msg err"; }
-            return;
-        }
         try {
-            const payload = {
-                behaviorType,
-                behaviorContent: document.getElementById("newBehaviorContent").value.trim() || null,
-                sourceSystem,
-                sourceRecordId: document.getElementById("newBehaviorSourceRecordId").value.trim() || null
-            };
-            await api(`/api/admin/unified-users/${userBehaviorUserId}/behaviors`, { method: "POST", body: JSON.stringify(payload) });
-            ["newBehaviorType","newBehaviorContent","newBehaviorSourceSystem","newBehaviorSourceRecordId"].forEach(id => {
-                const el = document.getElementById(id); if (el) el.value = "";
-            });
-            await loadUserBehaviors(0);
+            const list = await api(`/api/admin/unified-users/${userBehaviorUserId}/permission-audit`);
+            const table = document.getElementById("userAuditTable");
+            if (table) {
+                table.innerHTML =
+                    "<tr><th>时间</th><th>操作人</th><th>账号状态</th><th>评论权限</th><th>上传权限</th><th>原因</th></tr>" +
+                    (list || []).map(x => `<tr><td>${x.operatedAt || ""}</td><td>${escapeHtml(x.operatorName || "")}</td><td>${userStatusCodeToZh(x.oldStatus)} → ${userStatusCodeToZh(x.newStatus)}</td><td>${boolFlagToZh(x.oldCanComment)} → ${boolFlagToZh(x.newCanComment)}</td><td>${boolFlagToZh(x.oldCanUpload)} → ${boolFlagToZh(x.newCanUpload)}</td><td>${escapeHtml(x.reason || "—")}</td></tr>`).join("");
+            }
+            const m = document.getElementById("userAuditMsg");
+            if (m) { m.textContent = `共 ${(list || []).length} 条处罚/权限变更记录`; m.className = "msg muted"; }
         } catch (e) {
-            const m = document.getElementById("userBehaviorMsg");
+            const m = document.getElementById("userAuditMsg");
             if (m) { m.textContent = e.message; m.className = "msg err"; }
         }
     }
@@ -1335,10 +1745,12 @@
         const suffixMap = {
             operation: "operation",
             system: "system",
-            security: "security"
+            security: "security",
+            login: "login",
+            "data-change": "data-change"
         };
         const suffix = suffixMap[currentLogType];
-        if (!suffix) { setMsg("logMsg", "当前日志类型不支持导出，请切换到操作/系统/安全日志", false); return; }
+        if (!suffix) { setMsg("logMsg", "当前日志类型不支持导出", false); return; }
         const p = buildLogFilterQuery();
         const url = `/api/admin/logs/export/${suffix}${p.toString() ? "?" + p.toString() : ""}`;
         try {
@@ -1385,8 +1797,8 @@
             if (type === "login") {
                 const data = await api("/api/admin/logs/login" + qs);
                 document.getElementById("logTable").innerHTML =
-                    "<tr><th>ID</th><th>用户名</th><th>结果</th><th>IP</th><th>时间</th></tr>" +
-                    data.map(x => `<tr><td>${x.id}</td><td>${x.username}</td><td>${x.result}</td><td>${x.ipAddress || ""}</td><td>${x.loginTime || ""}</td></tr>`).join("");
+                    "<tr><th>ID</th><th>用户类型</th><th>用户名</th><th>来源</th><th>结果</th><th>IP</th><th>时间</th></tr>" +
+                    data.map(x => `<tr><td>${x.id}</td><td>${x.userType || ""}</td><td>${x.username}</td><td>${x.sourceSystem ? sourceToZh(x.sourceSystem) : "—"}</td><td>${x.result}</td><td>${x.ipAddress || ""}</td><td>${x.loginTime || ""}</td></tr>`).join("");
                 setMsg("logMsg", "登录日志已加载", true);
                 return;
             }
@@ -1448,24 +1860,29 @@
         </svg>`;
     }
 
+    let dashboardOverviewCache = null;
+
+    function onDashboardAccessSourceChange() {
+        if (dashboardOverviewCache) renderAccessTrendCharts(dashboardOverviewCache);
+    }
+
     function renderAccessTrendCharts(data) {
         const wrap = document.getElementById("dashboardAccessCharts");
         const sum = document.getElementById("dashboardAccessSummary");
         if (!wrap) return;
+        const source = (document.getElementById("dashboardAccessSource")?.value || "web").toLowerCase();
+        const sourceLabel = source === "app" ? "APP" : "WEB";
         const day = data.accessTrendDay || {};
         const week = data.accessTrendWeek || {};
         const month = data.accessTrendMonth || {};
-        const series = day.series || {};
-        const systems = Object.keys(series);
-        if (sum) sum.textContent = systems.length ? `统计子系统：${systems.join("、")}` : "暂无来源子系统数据";
-        const pickFirstSeries = (obj) => {
+        const pickSeries = (obj) => {
             const s = obj.series || {};
-            const k = Object.keys(s)[0];
-            return { vals: k ? s[k] : [], labels: obj.labels || [] };
+            return { vals: s[source] || [], labels: obj.labels || [] };
         };
-        const dayS = pickFirstSeries(day);
-        const weekS = pickFirstSeries(week);
-        const monthS = pickFirstSeries(month);
+        if (sum) sum.textContent = `当前子系统：${sourceLabel} · 统计口径：该时间段内去重登录人数（login_logs）`;
+        const dayS = pickSeries(day);
+        const weekS = pickSeries(week);
+        const monthS = pickSeries(month);
         wrap.innerHTML =
             `<div class="muted" style="font-size:12px; margin:4px 0;">日趋势（近7天）</div>${renderMiniLineSvg(dayS.vals, "#2563eb", dayS.labels)}` +
             `<div class="muted" style="font-size:12px; margin:8px 0 4px;">周趋势（近8周）</div>${renderMiniLineSvg(weekS.vals, "#16a34a", weekS.labels)}` +
@@ -1489,7 +1906,7 @@
     async function loadDashboard() {
         try {
             const data = await api("/api/admin/dashboard/overview");
-            const trend = (data.loginTrend7d || []).map(x => `${x.date}:${x.count}`).join(" | ");
+            dashboardOverviewCache = data;
             const pending = data.pendingReviews != null ? data.pendingReviews : 0;
             const recheck = data.recheckReviews != null ? data.recheckReviews : 0;
             const online = data.onlineUsers != null ? data.onlineUsers : 0;
@@ -1503,7 +1920,6 @@
                 <span class="badge">待审核: ${pending}</span>
                 <span class="badge">队列积压量: ${backlog}</span>
                 <span class="badge">文物总数: ${data.totalArtifacts}</span>
-                <span class="badge">近7天登录趋势: ${trend}</span>
             `;
             const overviewEl = document.getElementById("dashboardOverviewStats");
             if (overviewEl) {
@@ -1535,101 +1951,347 @@
         } catch (e) { console.log(e); }
     }
 
-    async function loadRolesAndPermissions() {
+    async function loadAdminRoleOptions() {
+        if (!hasPerm("ADMIN_MANAGE") && !hasPerm("ROLE_VIEW")) return;
         try {
             const roles = await api("/api/admin/rbac/roles");
-            const perms = await api("/api/admin/rbac/permissions");
-            document.getElementById("roleTable").innerHTML =
-                "<tr><th>ID</th><th>代码</th><th>名称</th><th>描述</th></tr>" +
-                roles.map(x => `<tr><td>${x.id}</td><td>${x.code}</td><td>${x.name}</td><td>${x.description || ""}</td></tr>`).join("");
-            document.getElementById("permissionTable").innerHTML =
-                "<tr><th>ID</th><th>代码</th><th>名称</th><th>描述</th></tr>" +
-                perms.map(x => `<tr><td>${x.id}</td><td>${x.code}</td><td>${x.name}</td><td>${x.description || ""}</td></tr>`).join("");
-            setMsg("rbacMsg", "角色权限数据已加载");
-        } catch (e) { setMsg("rbacMsg", e.message, false); }
+            rbacRolesCache = roles || rbacRolesCache;
+            populateAdminRoleSelects(roles || []);
+        } catch (e) {
+            populateAdminRoleSelects([
+                { code: "SUPER_ADMIN", name: "超级管理员" },
+                { code: "CONTENT_REVIEWER", name: "内容审核员" },
+                { code: "DATA_ADMIN", name: "数据管理员" }
+            ]);
+        }
     }
 
-    function parseIds(text) {
-        return text.split(",").map(x => Number(x.trim())).filter(x => !Number.isNaN(x));
+    function populateAdminRoleSelects(roles) {
+        const filterSel = document.getElementById("adminFilterRole");
+        const newSel = document.getElementById("newAdminRole");
+        const editSel = document.getElementById("editAdminRole");
+        const filterPrev = filterSel?.value;
+        const newPrev = newSel?.value;
+        const editPrev = editSel?.value;
+        const filterOpts = '<option value="">全部角色</option>' +
+            roles.map(r => `<option value="${escapeHtml(r.code)}">${escapeHtml(roleDisplayName(r))}</option>`).join("");
+        const pickOpts = roles.map(r => `<option value="${escapeHtml(r.code)}">${escapeHtml(roleDisplayName(r))}</option>`).join("");
+        if (filterSel) filterSel.innerHTML = filterOpts;
+        if (newSel) {
+            newSel.innerHTML = pickOpts;
+            if (newPrev) newSel.value = newPrev;
+            else if (roles.some(r => r.code === "CONTENT_REVIEWER")) newSel.value = "CONTENT_REVIEWER";
+        }
+        if (editSel) {
+            editSel.innerHTML = pickOpts;
+            if (editPrev) editSel.value = editPrev;
+        }
+        if (filterSel && filterPrev) filterSel.value = filterPrev;
+    }
+
+    async function loadRolesAndPermissions() {
+        try {
+            const [roles, perms] = await Promise.all([
+                api("/api/admin/rbac/roles"),
+                api("/api/admin/rbac/permissions")
+            ]);
+            rbacRolesCache = roles || [];
+            rbacPermsCache = perms || [];
+            renderRbacRoleList();
+            renderRbacRoleSelects();
+            renderPermCheckboxGroups("rbacNewPermCheckboxes", "rbac-new-perm-cb", []);
+            renderRbacEditPermCheckboxes([]);
+            populateAdminRoleSelects(rbacRolesCache);
+            const prevRole = document.getElementById("rbacRoleSelect")?.value;
+            if (prevRole) {
+                document.getElementById("rbacRoleSelect").value = prevRole;
+                await onRbacRoleSelectChange();
+            }
+            setMsg("rbacMsg", "角色与权限列表已刷新", true);
+        } catch (e) {
+            setMsg("rbacMsg", e.message, false);
+            const listEl = document.getElementById("rbacRoleList");
+            if (listEl) listEl.textContent = "加载失败：" + e.message;
+        }
+    }
+
+    function renderRbacRoleList() {
+        const el = document.getElementById("rbacRoleList");
+        if (!el) return;
+        if (!rbacRolesCache.length) {
+            el.textContent = "暂无角色，请先创建。";
+            return;
+        }
+        el.innerHTML = "<table><tr><th>角色</th><th>编码</th><th>类型</th><th>说明</th></tr>" +
+            rbacRolesCache.map(r => {
+                const tag = r.isSystem
+                    ? '<span class="rbac-role-tag sys">系统内置</span>'
+                    : '<span class="rbac-role-tag">自定义</span>';
+                return `<tr><td>${escapeHtml(roleDisplayName(r))}</td><td>${escapeHtml(r.code)}</td><td>${tag}</td><td>${escapeHtml(r.description || "—")}</td></tr>`;
+            }).join("") + "</table>";
+    }
+
+    function renderRbacRoleSelects() {
+        const roleSel = document.getElementById("rbacRoleSelect");
+        const opts = '<option value="">请选择角色</option>' +
+            rbacRolesCache.map(r => `<option value="${r.id}">${escapeHtml(roleDisplayName(r))}</option>`).join("");
+        if (roleSel) roleSel.innerHTML = opts;
+    }
+
+    function renderPermCheckboxGroups(containerId, checkboxClass, checkedIds) {
+        const el = document.getElementById(containerId);
+        if (!el) return;
+        if (!rbacPermsCache.length) {
+            el.textContent = "暂无权限定义";
+            return;
+        }
+        const checked = new Set((checkedIds || []).map(Number));
+        const byModule = {};
+        rbacPermsCache.forEach(p => {
+            const m = p.module || "OTHER";
+            if (!byModule[m]) byModule[m] = [];
+            byModule[m].push(p);
+        });
+        el.innerHTML = Object.keys(byModule).sort().map(m => {
+            const items = byModule[m].map(p => {
+                const on = checked.has(Number(p.id)) ? " checked" : "";
+                const label = permissionToZh(p);
+                const tip = p.description && p.description !== label ? ` title="${escapeHtml(p.description)}"` : "";
+                return `<label class="rbac-perm-item"${tip}><input type="checkbox" class="${checkboxClass}" value="${p.id}"${on}>${escapeHtml(label)}</label>`;
+            }).join("");
+            return `<div class="rbac-perm-group"><div class="rbac-perm-group-title">${escapeHtml(moduleToZh(m))}</div>${items}</div>`;
+        }).join("");
+    }
+
+    function renderRbacEditPermCheckboxes(checkedIds) {
+        const roleId = document.getElementById("rbacRoleSelect")?.value;
+        const el = document.getElementById("rbacPermCheckboxes");
+        if (!el) return;
+        if (!roleId) {
+            el.innerHTML = "请先在上方选择一个角色";
+            return;
+        }
+        renderPermCheckboxGroups("rbacPermCheckboxes", "rbac-edit-perm-cb", checkedIds);
+    }
+
+    async function onRbacRoleSelectChange() {
+        const roleId = document.getElementById("rbacRoleSelect")?.value;
+        if (!roleId) {
+            renderRbacEditPermCheckboxes([]);
+            return;
+        }
+        try {
+            const ids = await api(`/api/admin/rbac/roles/${roleId}/permissions`);
+            renderRbacEditPermCheckboxes(ids || []);
+        } catch (e) {
+            setMsg("rbacAssignPermMsg", e.message, false);
+            renderRbacEditPermCheckboxes([]);
+        }
+    }
+
+    function selectRbacPerms(className, checked) {
+        document.querySelectorAll("." + className).forEach(cb => { cb.checked = checked; });
+    }
+
+    function getSelectedPermIds(className) {
+        return Array.from(document.querySelectorAll("." + className + ":checked"))
+            .map(cb => Number(cb.value))
+            .filter(id => !Number.isNaN(id));
     }
 
     async function createRole() {
         try {
             const payload = {
-                code: document.getElementById("newRoleCode").value.trim(),
-                name: document.getElementById("newRoleName").value.trim(),
-                description: document.getElementById("newRoleDesc").value.trim()
+                code: document.getElementById("rbacNewRoleCode").value.trim(),
+                name: document.getElementById("rbacNewRoleName").value.trim(),
+                description: document.getElementById("rbacNewRoleDesc").value.trim(),
+                permissionIds: getSelectedPermIds("rbac-new-perm-cb")
             };
+            if (!payload.name) { setMsg("rbacCreateMsg", "请填写角色名称", false); return; }
+            if (!payload.code) { setMsg("rbacCreateMsg", "请填写角色编码（英文大写）", false); return; }
             await api("/api/admin/rbac/roles", { method: "POST", body: JSON.stringify(payload) });
-            setMsg("rbacMsg", "角色创建成功");
+            document.getElementById("rbacNewRoleCode").value = "";
+            document.getElementById("rbacNewRoleName").value = "";
+            document.getElementById("rbacNewRoleDesc").value = "";
+            selectRbacPerms("rbac-new-perm-cb", false);
+            setMsg("rbacCreateMsg", "角色及权限创建成功", true);
+            setMsg("rbacMsg", "角色及权限创建成功", true);
             await loadRolesAndPermissions();
-        } catch (e) { setMsg("rbacMsg", e.message, false); }
+        } catch (e) { setMsg("rbacCreateMsg", e.message, false); }
     }
 
-    async function assignRolesToAdmin() {
+    async function assignRolePermissions() {
         try {
-            const adminId = document.getElementById("assignAdminId").value.trim();
-            const ids = parseIds(document.getElementById("assignRoleIds").value.trim());
-            await api(`/api/admin/rbac/admins/${adminId}/roles`, { method: "POST", body: JSON.stringify({ ids }) });
-            setMsg("rbacMsg", "管理员角色分配成功");
-        } catch (e) { setMsg("rbacMsg", e.message, false); }
-    }
-
-    async function assignPermissionsToRole() {
-        try {
-            const roleId = document.getElementById("assignPermRoleId").value.trim();
-            const ids = parseIds(document.getElementById("assignPermIds").value.trim());
+            const roleId = document.getElementById("rbacRoleSelect").value;
+            if (!roleId) { setMsg("rbacAssignPermMsg", "请先选择角色", false); return; }
+            const ids = getSelectedPermIds("rbac-edit-perm-cb");
             await api(`/api/admin/rbac/roles/${roleId}/permissions`, { method: "POST", body: JSON.stringify({ ids }) });
-            setMsg("rbacMsg", "角色权限分配成功");
-        } catch (e) { setMsg("rbacMsg", e.message, false); }
+            setMsg("rbacAssignPermMsg", "权限保存成功", true);
+            setMsg("rbacMsg", "角色权限已更新", true);
+        } catch (e) { setMsg("rbacAssignPermMsg", e.message, false); }
     }
 
-    async function loadAdminsForAssign() {
-        await loadAdmins();
-        setMsg("rbacMsg", "管理员列表已刷新，可填ID分配角色");
+    function artifactSourceLabel(sourceSystem) {
+        const map = { smithsonian: "史密森尼", harvard: "哈佛", mfa: "波士顿美术博物馆" };
+        return map[sourceSystem] || sourceSystem || "";
+    }
+
+    function kgSyncStatusToZh(status) {
+        if (status === "SYNCED") return "已同步";
+        if (status === "PENDING") return "未同步";
+        return status || "";
+    }
+
+    function artifactDisplayId(x) {
+        const raw = x.objectId || "";
+        if (raw.startsWith("MANUAL_")) {
+            return raw.substring(7);
+        }
+        return raw || "—";
     }
 
     async function loadArtifacts() {
         try {
-            const data = await api("/api/admin/artifacts");
+            const sp = new URLSearchParams();
+            const keyword = document.getElementById("filterArtifactKeyword")?.value.trim();
+            const sourceSystem = document.getElementById("filterArtifactSource")?.value.trim();
+            const period = document.getElementById("filterArtifactPeriod")?.value.trim();
+            const type = document.getElementById("filterArtifactType")?.value.trim();
+            const kgSyncStatus = document.getElementById("filterArtifactKgStatus")?.value.trim();
+            if (keyword) sp.set("keyword", keyword);
+            if (sourceSystem) sp.set("sourceSystem", sourceSystem);
+            if (period) sp.set("period", period);
+            if (type) sp.set("type", type);
+            if (kgSyncStatus) sp.set("kgSyncStatus", kgSyncStatus);
+            const qs = sp.toString() ? "?" + sp.toString() : "";
+            const data = await api("/api/admin/artifacts" + qs);
+            artifactRows = data;
+            const canDelete = hasPerm("ARTIFACT_DELETE");
             document.getElementById("artifactTable").innerHTML =
-                "<tr><th>ID</th><th>名称</th><th>年代</th><th>类型</th><th>材质</th><th>来源</th><th>图谱同步</th><th>操作</th></tr>" +
-                data.map(x => `<tr><td>${x.id}</td><td>${x.name}</td><td>${x.period || ""}</td><td>${x.type || ""}</td><td>${x.material || ""}</td><td>${x.sourceSystem || ""}</td><td>${x.kgSyncStatus}</td><td><button class="btn btn-light" onclick="fillArtifact(${x.id}, '${(x.name || "").replace(/'/g, "\\'")}', '${(x.period || "").replace(/'/g, "\\'")}', '${(x.type || "").replace(/'/g, "\\'")}', '${(x.material || "").replace(/'/g, "\\'")}', '${(x.imageUrl || "").replace(/'/g, "\\'")}', '${(x.sourceSystem || "").replace(/'/g, "\\'")}', '${(x.kgSyncStatus || "").replace(/'/g, "\\'")}')">编辑</button></td></tr>`).join("");
-            setMsg("artifactMsg", "文物列表加载成功");
+                "<tr><th>文物编号</th><th>名称</th><th>年代</th><th>类型</th><th>材质</th><th>来源</th><th>图谱同步</th><th>操作</th></tr>" +
+                (data.length ? data.map((x, i) => {
+                    const num = artifactDisplayId(x);
+                    const name = escapeHtml(x.name || x.title || "");
+                    const delBtn = canDelete
+                        ? ` <button type="button" class="btn btn-danger" onclick="deleteArtifact(${i})">删除</button>`
+                        : "";
+                    return `<tr><td>${escapeHtml(num)}</td><td>${name}</td><td>${escapeHtml(x.period || "")}</td><td>${escapeHtml(x.type || "")}</td><td>${escapeHtml(x.material || "")}</td><td>${escapeHtml(artifactSourceLabel(x.sourceSystem))}</td><td>${escapeHtml(kgSyncStatusToZh(x.kgSyncStatus))}</td><td><button type="button" class="btn btn-light" onclick="openEditArtifact(${i})">编辑</button>${delBtn}</td></tr>`;
+                }).join("") : "<tr><td colspan=\"8\" class=\"muted\">暂无数据</td></tr>");
+            setMsg("artifactMsg", "共 " + data.length + " 条", true);
         } catch (e) { setMsg("artifactMsg", e.message, false); }
     }
 
-    function fillArtifact(id, name, period, type, material, imageUrl, sourceSystem, kgStatus) {
-        document.getElementById("artifactId").value = id;
-        document.getElementById("artifactName").value = name;
-        document.getElementById("artifactPeriod").value = period;
-        document.getElementById("artifactType").value = type;
-        document.getElementById("artifactMaterial").value = material;
-        document.getElementById("artifactImageUrl").value = imageUrl;
-        document.getElementById("artifactSourceSystem").value = sourceSystem;
-        document.getElementById("artifactKgStatus").value = kgStatus;
+    function resetArtifactFilters() {
+        ["filterArtifactKeyword", "filterArtifactPeriod", "filterArtifactType"].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = "";
+        });
+        const src = document.getElementById("filterArtifactSource");
+        const kg = document.getElementById("filterArtifactKgStatus");
+        if (src) src.value = "";
+        if (kg) kg.value = "";
+        loadArtifacts();
     }
 
-    async function saveArtifact() {
+    async function deleteArtifact(index) {
+        const x = artifactRows[index];
+        if (!x) return;
+        const name = x.name || x.title || "未命名";
+        const num = artifactDisplayId(x);
+        if (!confirm("确定删除文物「" + name + "」（编号 " + num + "）？此操作不可恢复。")) return;
         try {
-            const id = document.getElementById("artifactId").value.trim();
-            const payload = {
-                name: document.getElementById("artifactName").value.trim(),
-                period: document.getElementById("artifactPeriod").value.trim(),
-                type: document.getElementById("artifactType").value.trim(),
-                material: document.getElementById("artifactMaterial").value.trim(),
-                imageUrl: document.getElementById("artifactImageUrl").value.trim(),
-                sourceSystem: document.getElementById("artifactSourceSystem").value.trim(),
-                sourceId: null,
-                description: null,
-                kgSyncStatus: document.getElementById("artifactKgStatus").value.trim()
-            };
-            if (id) {
-                await api(`/api/admin/artifacts/${id}`, { method: "PUT", body: JSON.stringify(payload) });
-            } else {
-                await api("/api/admin/artifacts", { method: "POST", body: JSON.stringify(payload) });
-            }
-            setMsg("artifactMsg", "保存成功");
+            const id = x.id || x.artifactId || "";
+            await api("/api/admin/artifacts/" + encodeURIComponent(id), { method: "DELETE" });
+            setMsg("artifactMsg", "已删除", true);
+            cancelEditArtifact();
+            await loadArtifacts();
+        } catch (e) { setMsg("artifactMsg", e.message, false); }
+    }
+
+    function buildArtifactPayload(prefix) {
+        const objectId = document.getElementById(prefix + "ObjectId").value.trim();
+        const sourceSystem = document.getElementById(prefix + "SourceSystem").value.trim();
+        const name = document.getElementById(prefix + "Name").value.trim();
+        const period = document.getElementById(prefix + "Period").value.trim();
+        const type = document.getElementById(prefix + "Type").value.trim();
+        const material = document.getElementById(prefix + "Material").value.trim();
+        const imageUrl = document.getElementById(prefix + "ImageUrl").value.trim();
+        const detailUrl = document.getElementById(prefix + "DetailUrl").value.trim();
+        const description = document.getElementById(prefix + "Description").value.trim();
+        const kgSyncStatus = document.getElementById(prefix + "KgStatus").value.trim();
+        if (!objectId) throw new Error("请填写文物编号");
+        if (!sourceSystem) throw new Error("请选择所属馆别");
+        if (!name) throw new Error("请填写文物名称");
+        if (!period) throw new Error("请填写年代");
+        if (!type) throw new Error("请填写类型");
+        if (!description) throw new Error("请填写文物介绍");
+        if (!imageUrl) throw new Error("请填写图片链接");
+        return {
+            objectId,
+            sourceSystem,
+            name,
+            period,
+            type,
+            material: material || null,
+            description,
+            imageUrl,
+            detailUrl: detailUrl || null,
+            kgSyncStatus: kgSyncStatus || "PENDING"
+        };
+    }
+
+    function resetNewArtifactForm() {
+        ["ObjectId", "Name", "Period", "Type", "Material", "ImageUrl", "DetailUrl"].forEach(f => {
+            const el = document.getElementById("newArtifact" + f);
+            if (el) el.value = "";
+        });
+        document.getElementById("newArtifactDescription").value = "";
+        document.getElementById("newArtifactSourceSystem").value = "";
+        document.getElementById("newArtifactKgStatus").value = "PENDING";
+    }
+
+    async function createArtifact() {
+        try {
+            const payload = buildArtifactPayload("newArtifact");
+            await api("/api/admin/artifacts", { method: "POST", body: JSON.stringify(payload) });
+            setMsg("artifactMsg", "新增成功", true);
+            resetNewArtifactForm();
+            await loadArtifacts();
+        } catch (e) { setMsg("artifactMsg", e.message, false); }
+    }
+
+    function openEditArtifact(index) {
+        const x = artifactRows[index];
+        if (!x) return;
+        document.getElementById("editArtifactApiId").value = x.id || x.artifactId || "";
+        document.getElementById("editArtifactKeyLabel").textContent = (x.name || x.title || "") + "（编号 " + artifactDisplayId(x) + "）";
+        document.getElementById("editArtifactObjectId").value = x.objectId || "";
+        document.getElementById("editArtifactSourceSystem").value = x.sourceSystem || "";
+        document.getElementById("editArtifactName").value = x.name || x.title || "";
+        document.getElementById("editArtifactPeriod").value = x.period || "";
+        document.getElementById("editArtifactType").value = x.type || "";
+        document.getElementById("editArtifactMaterial").value = x.material || "";
+        document.getElementById("editArtifactImageUrl").value = x.imageUrl || "";
+        document.getElementById("editArtifactDetailUrl").value = x.detailUrl || "";
+        document.getElementById("editArtifactDescription").value = x.description || "";
+        document.getElementById("editArtifactKgStatus").value = x.kgSyncStatus || "PENDING";
+        document.getElementById("artifactEditPanel").style.display = "inline-flex";
+        document.getElementById("artifactEditPanel").scrollIntoView({ behavior: "smooth", block: "nearest" });
+        setMsg("artifactMsg", "请在下方编辑区修改后保存", true);
+    }
+
+    function cancelEditArtifact() {
+        document.getElementById("artifactEditPanel").style.display = "none";
+    }
+
+    async function saveEditArtifact() {
+        try {
+            const id = document.getElementById("editArtifactApiId").value.trim();
+            if (!id) throw new Error("缺少文物标识");
+            const payload = buildArtifactPayload("editArtifact");
+            await api(`/api/admin/artifacts/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(payload) });
+            setMsg("artifactMsg", "修改成功", true);
+            cancelEditArtifact();
             await loadArtifacts();
         } catch (e) { setMsg("artifactMsg", e.message, false); }
     }
@@ -1668,202 +2330,550 @@
         }
     }
 
-    function setIntegrationOut(obj) {
-        const el = document.getElementById("integrationOut");
-        el.textContent = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
-    }
-
-    async function loadIntegrationStatus() {
-        try {
-            const s = await api("/api/admin/integrations/status");
-            setIntegrationOut(s);
-            setMsg("integrationMsg", "状态已加载（见下方 JSON）", true);
-        } catch (e) {
-            setMsg("integrationMsg", e.message, false);
-        }
-    }
-
-    async function proxyUsers() {
-        try {
-            const data = await api("/api/admin/integrations/proxy/users");
-            setIntegrationOut(data);
-            setMsg("integrationMsg", "用户代理成功", true);
-        } catch (e) { setMsg("integrationMsg", e.message, false); }
-    }
-
-    async function proxyArtifacts() {
-        try {
-            const data = await api("/api/admin/integrations/proxy/artifacts");
-            setIntegrationOut(data);
-            setMsg("integrationMsg", "文物代理成功", true);
-        } catch (e) { setMsg("integrationMsg", e.message, false); }
-    }
-
-    async function proxyReviewCallback() {
-        try {
-            const payload = { reviewId: 1, result: "APPROVED", detail: "模板回调", sourceSystem: "admin-backend" };
-            const data = await api("/api/admin/integrations/proxy/review", { method: "POST", body: JSON.stringify(payload) });
-            setIntegrationOut(data);
-            setMsg("integrationMsg", "审核回传已代理", true);
-        } catch (e) { setMsg("integrationMsg", e.message, false); }
-    }
-
-    async function proxyForwardGet() {
-        const sub = document.getElementById("fwdSubPath").value.trim();
-        if (!sub || !sub.startsWith("/")) { setMsg("integrationMsg", "subPath 需以 / 开头", false); return; }
-        const system = document.getElementById("fwdSystem").value;
-        const body = { system, subPath: sub, method: "GET" };
-        try {
-            const data = await api("/api/admin/integrations/proxy/forward", { method: "POST", body: JSON.stringify(body) });
-            setIntegrationOut(data);
-            setMsg("integrationMsg", "GET 转发完成", true);
-        } catch (e) { setMsg("integrationMsg", e.message, false); }
-    }
-
     let kgPaths = {
-        entities: "/api/v1/kg/entities",
-        relations: "/api/v1/kg/relations",
-        triples: "/api/v1/kg/triples",
-        syncJobs: "/api/v1/kg/sync/jobs"
+        entities: "/api/admin/kg/entities",
+        relations: "/api/admin/kg/relations",
+        relationTypes: "/api/admin/kg/relation-types",
+        triples: "/api/admin/kg/triples",
+        syncJobs: "/api/admin/kg/sync/jobs"
     };
+    let kgRelationTypes = [];
+    let kgEditingKey = null;
+    let kgPageIndex = 0;
+    let kgPageMeta = { total: 0, totalPages: 0, page: 0, size: 20 };
+    let kgLastTotal = null;
+    const KG_ENTITY_LABELS = [
+        { value: "Artifact", zh: "文物" },
+        { value: "Museum", zh: "博物馆" },
+        { value: "Dynasty", zh: "朝代" },
+        { value: "Artist", zh: "艺术家" },
+        { value: "Material", zh: "材质" },
+        { value: "ArtifactType", zh: "文物类型" },
+        { value: "Location", zh: "地点" },
+        { value: "Culture", zh: "文化" }
+    ];
+    function kgEntityLabelToZh(label) {
+        const hit = KG_ENTITY_LABELS.find(x => x.value === label);
+        return hit ? hit.zh : (label || "");
+    }
+    function kgEntityLabelOption(value, selected) {
+        const zh = kgEntityLabelToZh(value);
+        return `<option value="${escapeHtml(value)}"${selected ? " selected" : ""}>${escapeHtml(zh)}（${escapeHtml(value)}）</option>`;
+    }
+    function populateKgEntityLabelSelects() {
+        const allOpts = KG_ENTITY_LABELS.map(x => kgEntityLabelOption(x.value)).join("");
+        const pairs = [
+            ["kgEntityLabel", allOpts, "Artifact"],
+            ["kgFormEntityLabel", allOpts, "Artifact"],
+            ["kgRelFromLabel", allOpts, "Artifact"],
+            ["kgRelToLabel", allOpts, "Museum"]
+        ];
+        pairs.forEach(([id, html, fallback]) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            const cur = el.value || fallback;
+            el.innerHTML = html;
+            if (cur) el.value = cur;
+        });
+    }
+    function kgRelTypeOptionLabel(r) {
+        const name = r.name || "";
+        const count = r.count != null ? ` (${r.count})` : "";
+        return `${name}${count}`;
+    }
+    function kgRelTypeSelectOption(r) {
+        const name = r.name || "";
+        return `<option value="${escapeHtml(name)}">${escapeHtml(kgRelTypeOptionLabel(r))}</option>`;
+    }
+    function kgShowSuccessMsg(text) {
+        setMsg("kgMsg", text, true);
+        document.getElementById("kgMsg")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+    function kgCurrentPageSize() {
+        const n = parseInt(document.getElementById("kgPageSize")?.value || "20", 10);
+        return isNaN(n) ? 20 : n;
+    }
+    function kgResetPageAndLoad() {
+        kgPageIndex = 0;
+        loadKgResourceList();
+    }
+    function syncKgToolbarVisibility() {
+        const type = currentKgResourceType();
+        const labelSel = document.getElementById("kgEntityLabel");
+        const relFilter = document.getElementById("kgTripleRelationFilter");
+        const entityPanel = document.getElementById("kgEntityFormPanel");
+        const relTypePanel = document.getElementById("kgRelTypeFormPanel");
+        const relationPanel = document.getElementById("kgRelationFormPanel");
+        const sortSel = document.getElementById("kgSort");
+        if (labelSel) labelSel.style.display = type === "entities" ? "" : "none";
+        if (relFilter) relFilter.style.display = type === "triples" ? "" : "none";
+        if (sortSel) sortSel.style.display = type === "relationTypes" ? "none" : "";
+        if (entityPanel) entityPanel.style.display = type === "entities" ? "block" : "none";
+        if (relTypePanel) relTypePanel.style.display = type === "relationTypes" ? "block" : "none";
+        if (relationPanel) relationPanel.style.display = type === "triples" ? "block" : "none";
+    }
+    function onKgResourceTypeChange() {
+        kgPageIndex = 0;
+        syncKgToolbarVisibility();
+        loadKgResourceList();
+    }
     function kgResourceTypeToZh(t) {
         if (t === "entities") return "实体";
-        if (t === "relations") return "关系";
+        if (t === "relationTypes") return "关系类型";
         if (t === "triples") return "三元组";
         return t;
+    }
+    function kgResourceApiPath(type) {
+        const size = kgCurrentPageSize();
+        const page = kgPageIndex;
+        const sort = document.getElementById("kgSort")?.value || "name";
+        const keyword = document.getElementById("kgKeyword")?.value.trim() || "";
+        const kwQ = keyword ? `&keyword=${encodeURIComponent(keyword)}` : "";
+        if (type === "entities") {
+            const label = document.getElementById("kgEntityLabel")?.value || "Artifact";
+            return `${kgPaths.entities}?label=${encodeURIComponent(label)}&page=${page}&size=${size}&sort=${sort}${kwQ}`;
+        }
+        if (type === "relationTypes") {
+            return `${kgPaths.relations}?page=${page}&size=${size}${kwQ}`;
+        }
+        const rel = document.getElementById("kgTripleRelationFilter")?.value || "";
+        const relQ = rel ? `&relationType=${encodeURIComponent(rel)}` : "";
+        return `${kgPaths.triples}?page=${page}&size=${size}&sort=${sort}${relQ}${kwQ}`;
+    }
+    function kgAfterSaveRefresh(type, payload, isUpdate) {
+        if (isUpdate) return;
+        kgPageIndex = 0;
+        const sortSel = document.getElementById("kgSort");
+        if (sortSel && type !== "relationTypes") sortSel.value = "updated";
+        const kw = document.getElementById("kgKeyword");
+        if (kw) {
+            if (type === "entities") {
+                kw.value = payload.uri || payload.title || payload.name || "";
+                if (payload.label) {
+                    const labelSel = document.getElementById("kgEntityLabel");
+                    if (labelSel) labelSel.value = payload.label;
+                }
+            } else if (type === "relationTypes") {
+                kw.value = payload.name || "";
+            } else {
+                kw.value = payload.relationType || payload.subject || "";
+                const relF = document.getElementById("kgTripleRelationFilter");
+                if (relF && payload.relationType) relF.value = payload.relationType;
+            }
+        }
     }
     function currentKgResourceType() {
         const s = document.getElementById("kgResourceType");
         return (s && s.value) || "entities";
     }
-    function kgResourcePath(type) {
-        if (type === "entities") return kgPaths.entities;
-        if (type === "relations") return kgPaths.relations;
-        return kgPaths.triples;
+    async function loadKgRelationTypeOptions() {
+        try {
+            kgRelationTypes = await api("/api/admin/kg/relation-types");
+            const filterSel = document.getElementById("kgTripleRelationFilter");
+            if (filterSel) {
+                const cur = filterSel.value;
+                filterSel.innerHTML = `<option value="">全部关系类型</option>` + (kgRelationTypes || []).map(r =>
+                    `<option value="${escapeHtml(r.name || "")}">${escapeHtml(kgRelTypeOptionLabel(r))}</option>`
+                ).join("");
+                if (cur) filterSel.value = cur;
+            }
+            const formSel = document.getElementById("kgRelType");
+            if (formSel) {
+                const cur = formSel.value;
+                formSel.innerHTML = (kgRelationTypes || []).map(r => kgRelTypeSelectOption(r)).join("");
+                if (cur) formSel.value = cur;
+            }
+        } catch (_) { }
+    }
+    function onKgFormEntityLabelChange() {
+        const label = document.getElementById("kgFormEntityLabel")?.value || "Artifact";
+        const isEdit = !!document.getElementById("kgEntityEditUri")?.value;
+        document.getElementById("kgEntityFieldsArtifact").style.display = label === "Artifact" ? "" : "none";
+        document.getElementById("kgEntityFieldsMuseum").style.display = label === "Museum" ? "" : "none";
+        document.getElementById("kgEntityFieldsGeneric").style.display = (label !== "Artifact" && label !== "Museum") ? "" : "none";
+        const uriInput = document.getElementById("kgEntUri");
+        if (uriInput) uriInput.readOnly = isEdit;
+        updateKgEntityUriPreview();
+    }
+    function updateKgEntityUriPreview() {
+        const el = document.getElementById("kgEntityUriPreview");
+        if (!el) return;
+        const p = buildEntityPayloadFromForm(false);
+        if (!p) { el.textContent = ""; return; }
+        el.textContent = "将写入 Neo4j 的 uri：" + (p.uri || "（请补全必填项）");
+    }
+    function buildEntityPayloadFromForm(requireAll) {
+        const label = document.getElementById("kgFormEntityLabel")?.value || "Artifact";
+        const editUri = document.getElementById("kgEntityEditUri")?.value.trim() || "";
+        const payload = { label };
+        if (label === "Artifact") {
+            const museum_id = document.getElementById("kgEntMuseumId")?.value.trim() || "";
+            const object_id = document.getElementById("kgEntObjectId")?.value.trim() || "";
+            const title = document.getElementById("kgEntTitle")?.value.trim() || "";
+            if (requireAll && (!museum_id || !object_id || !title)) {
+                throw new Error("请填写馆别 ID、文物编号和名称");
+            }
+            payload.museum_id = museum_id;
+            payload.object_id = object_id;
+            payload.title = title;
+            payload.uri = editUri || (museum_id && object_id ? `entity:artifact:${museum_id}:${object_id}` : "");
+        } else if (label === "Museum") {
+            const key = document.getElementById("kgEntMuseumKey")?.value.trim() || "";
+            const name = document.getElementById("kgEntMuseumName")?.value.trim() || "";
+            if (requireAll && (!key || !name)) throw new Error("请填写博物馆 ID 和名称");
+            payload.name = name;
+            payload.uri = editUri || (key ? `entity:museum:${key}` : "");
+        } else {
+            const uri = document.getElementById("kgEntUri")?.value.trim() || editUri;
+            const name = document.getElementById("kgEntName")?.value.trim() || "";
+            if (requireAll && (!uri || !name)) throw new Error("请填写 uri 和名称");
+            payload.uri = uri;
+            payload.name = name;
+        }
+        if (editUri) payload.uri = editUri;
+        return payload;
+    }
+    function resetKgEntityForm() {
+        kgEditingKey = null;
+        document.getElementById("kgEntityEditUri").value = "";
+        document.getElementById("kgEntMuseumId").value = "";
+        document.getElementById("kgEntObjectId").value = "";
+        document.getElementById("kgEntTitle").value = "";
+        document.getElementById("kgEntMuseumKey").value = "";
+        document.getElementById("kgEntMuseumName").value = "";
+        document.getElementById("kgEntUri").value = "";
+        document.getElementById("kgEntName").value = "";
+        document.getElementById("kgEntUri").readOnly = false;
+        document.getElementById("kgEntObjectId").readOnly = false;
+        document.getElementById("kgEntMuseumKey").readOnly = false;
+        onKgFormEntityLabelChange();
+    }
+    function fillKgEntityFormFromRow(x) {
+        resetKgEntityForm();
+        const label = x.label || "Artifact";
+        document.getElementById("kgFormEntityLabel").value = label;
+        document.getElementById("kgEntityEditUri").value = x.uri || "";
+        kgEditingKey = x.uri || null;
+        if (label === "Artifact") {
+            document.getElementById("kgEntMuseumId").value = x.museum_id != null ? x.museum_id : "";
+            document.getElementById("kgEntObjectId").value = x.object_id || "";
+            document.getElementById("kgEntTitle").value = x.title || x.name || "";
+            document.getElementById("kgEntObjectId").readOnly = true;
+        } else if (label === "Museum") {
+            const m = (x.uri || "").match(/entity:museum:(.+)$/);
+            document.getElementById("kgEntMuseumKey").value = m ? m[1] : "";
+            document.getElementById("kgEntMuseumName").value = x.name || x.nodeName || "";
+            document.getElementById("kgEntMuseumKey").readOnly = true;
+        } else {
+            document.getElementById("kgEntUri").value = x.uri || "";
+            document.getElementById("kgEntName").value = x.name || x.nodeName || x.title || "";
+            document.getElementById("kgEntUri").readOnly = true;
+        }
+        document.getElementById("kgEntityLabel").value = label;
+        onKgFormEntityLabelChange();
+        document.getElementById("kgEntityFormPanel").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+    async function saveKgEntityForm() {
+        try {
+            const payload = buildEntityPayloadFromForm(true);
+            if (!payload.uri) throw new Error("无法生成 uri，请检查必填项");
+            const isUpdate = !!document.getElementById("kgEntityEditUri")?.value;
+            let created;
+            if (isUpdate) {
+                created = await kgForward(`${kgPaths.entities}?uri=${encodeURIComponent(payload.uri)}`, "PUT", payload);
+                kgShowSuccessMsg("✓ 修改成功，正在刷新…");
+                await saveKgResourceAfterSync("实体修改成功", "entities", created || payload, true);
+            } else {
+                created = await kgForward(kgPaths.entities, "POST", payload);
+                kgShowSuccessMsg("✓ 保存成功，正在刷新…");
+                kgAfterSaveRefresh("entities", created || payload, false);
+                resetKgEntityForm();
+                await saveKgResourceAfterSync("实体新增成功", "entities", created || payload, false);
+            }
+        } catch (e) { setMsg("kgMsg", e.message, false); }
+    }
+    async function loadKgEntityPicker(side) {
+        const labelEl = document.getElementById(side === "from" ? "kgRelFromLabel" : "kgRelToLabel");
+        const searchEl = document.getElementById(side === "from" ? "kgRelFromSearch" : "kgRelToSearch");
+        const selEl = document.getElementById(side === "from" ? "kgRelFromUri" : "kgRelToUri");
+        const label = labelEl?.value || "Artifact";
+        const keyword = searchEl?.value.trim() || "";
+        try {
+            const rows = await api(`/api/admin/kg/entities/options?label=${encodeURIComponent(label)}&limit=50${keyword ? "&keyword=" + encodeURIComponent(keyword) : ""}`);
+            selEl.innerHTML = (rows || []).map(x =>
+                `<option value="${escapeHtml(x.uri || "")}">${escapeHtml(x.name || x.uri || "")}（${escapeHtml(kgEntityLabelToZh(x.label || ""))}）</option>`
+            ).join("");
+            if (!rows || !rows.length) setMsg("kgMsg", "未找到实体，请换类型或关键词", false);
+        } catch (e) { setMsg("kgMsg", e.message, false); }
+    }
+    function resetKgRelationForm() {
+        kgEditingKey = null;
+        document.getElementById("kgRelationEditId").value = "";
+        document.getElementById("kgRelTypeCustom").value = "";
+        document.getElementById("kgRelFromUri").innerHTML = "";
+        document.getElementById("kgRelToUri").innerHTML = "";
+        if (kgRelationTypes.length && document.getElementById("kgRelType")) {
+            document.getElementById("kgRelType").selectedIndex = 0;
+        }
+    }
+    function fillKgRelationFormFromRow(x) {
+        resetKgRelationForm();
+        document.getElementById("kgRelationEditId").value = x.id || "";
+        kgEditingKey = x.id || null;
+        const typeSel = document.getElementById("kgRelType");
+        if (typeSel && x.relationType) {
+            let found = false;
+            for (const opt of typeSel.options) {
+                if (opt.value === x.relationType) { opt.selected = true; found = true; break; }
+            }
+            if (!found) document.getElementById("kgRelTypeCustom").value = x.relationType;
+        }
+        const fromSel = document.getElementById("kgRelFromUri");
+        const toSel = document.getElementById("kgRelToUri");
+        if (x.fromUri) fromSel.innerHTML = `<option value="${escapeHtml(x.fromUri)}" selected>${escapeHtml(x.subject || x.fromUri)}</option>`;
+        if (x.toUri) toSel.innerHTML = `<option value="${escapeHtml(x.toUri)}" selected>${escapeHtml(x.object || x.toUri)}</option>`;
+        document.getElementById("kgRelationFormPanel").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+    function buildRelationPayloadFromForm() {
+        const id = document.getElementById("kgRelationEditId")?.value.trim() || "";
+        const custom = document.getElementById("kgRelTypeCustom")?.value.trim() || "";
+        const relationType = custom || document.getElementById("kgRelType")?.value || "";
+        const fromUri = document.getElementById("kgRelFromUri")?.value || "";
+        const toUri = document.getElementById("kgRelToUri")?.value || "";
+        if (!relationType) throw new Error("请选择或填写关系类型");
+        if (!fromUri) throw new Error("请选择主语实体");
+        if (!toUri) throw new Error("请选择宾语实体");
+        const payload = { relationType, fromUri, toUri };
+        if (id) payload.id = id;
+        return payload;
+    }
+    async function saveKgRelationForm() {
+        try {
+            const payload = buildRelationPayloadFromForm();
+            const isUpdate = !!document.getElementById("kgRelationEditId")?.value;
+            let created;
+            if (isUpdate) {
+                created = await kgForward(`${kgPaths.triples}?id=${encodeURIComponent(payload.id)}`, "PUT", payload);
+                kgShowSuccessMsg("✓ 修改成功，正在刷新…");
+                await saveKgResourceAfterSync("三元组修改成功", "triples", created || payload, true);
+            } else {
+                created = await kgForward(kgPaths.triples, "POST", payload);
+                kgShowSuccessMsg("✓ 保存成功，正在刷新…");
+                kgAfterSaveRefresh("triples", created || payload, false);
+                resetKgRelationForm();
+                await saveKgResourceAfterSync("三元组新增成功", "triples", created || payload, false);
+            }
+        } catch (e) { setMsg("kgMsg", e.message, false); }
+    }
+    function resetKgRelTypeForm() {
+        document.getElementById("kgRelTypeName").value = "";
+    }
+    function buildRelTypePayloadFromForm() {
+        const name = document.getElementById("kgRelTypeName")?.value.trim() || "";
+        if (!name) throw new Error("请填写关系类型名称");
+        return { name };
+    }
+    async function saveKgRelTypeForm() {
+        try {
+            const payload = buildRelTypePayloadFromForm();
+            const saved = await kgForward(kgPaths.relationTypes, "POST", payload);
+            kgShowSuccessMsg("✓ 保存成功，正在刷新…");
+            kgAfterSaveRefresh("relationTypes", saved || payload, false);
+            resetKgRelTypeForm();
+            await saveKgResourceAfterSync("关系类型新增成功", "relationTypes", saved || payload, false);
+        } catch (e) { setMsg("kgMsg", e.message, false); }
+    }
+    async function deleteKgRelTypeRow(nameEnc) {
+        const name = decodeURIComponent(nameEnc);
+        const hit = (kgRelationTypes || []).find(r => r.name === name);
+        const count = hit ? (hit.count || 0) : 0;
+        let cascade = false;
+        if (count > 0) {
+            cascade = confirm(`确定删除关系类型「${name}」？\n\n图中仍有 ${count} 条该类型三元组。\n\n点「确定」将同时删除全部三元组；点「取消」放弃删除。`);
+            if (!cascade) return;
+        } else if (!confirm(`确定删除关系类型「${name}」？`)) {
+            return;
+        }
+        try {
+            await kgForward(`${kgPaths.relationTypes}?name=${encodeURIComponent(name)}&cascadeEdges=${cascade}`, "DELETE", {});
+            kgShowSuccessMsg("✓ 删除成功，正在刷新…");
+            await saveKgResourceAfterSync("关系类型删除成功", "relationTypes", { name }, true);
+            resetKgRelTypeForm();
+        } catch (e) { setMsg("kgMsg", e.message, false); }
+    }
+    function renderKgPagination() {
+        const el = document.getElementById("kgPagination");
+        if (!el) return;
+        const pageHuman = kgPageMeta.totalPages > 0 ? kgPageIndex + 1 : 0;
+        el.innerHTML = `
+            <button class="btn btn-light" onclick="kgGoPage(-1)" ${kgPageIndex <= 0 ? "disabled" : ""}>上一页</button>
+            <span class="muted" style="font-size:12px;">第 ${pageHuman} / ${kgPageMeta.totalPages || 0} 页，共 ${kgPageMeta.total || 0} 条</span>
+            <button class="btn btn-light" onclick="kgGoPage(1)" ${kgPageIndex + 1 >= kgPageMeta.totalPages ? "disabled" : ""}>下一页</button>`;
+    }
+    function kgGoPage(delta) {
+        const next = kgPageIndex + delta;
+        if (next < 0 || next >= kgPageMeta.totalPages) return;
+        kgPageIndex = next;
+        loadKgResourceList();
+    }
+    async function loadKgOverview() {
+        const el = document.getElementById("kgOverview");
+        try {
+            const o = await api("/api/admin/kg/overview");
+            if (el) {
+                el.textContent = `图数据库已连接 | 实体 ${o.entityCount || 0} 个 | 三元组 ${o.tripleCount || 0} 条 | 文物 ${o.artifactCount || 0} | 关系类型 ${o.relationTypeCount || 0} 种`;
+            }
+        } catch (e) {
+            if (el) el.textContent = "图数据库暂不可用：" + e.message;
+        }
+    }
+    function kgResponseRows(res) {
+        return Array.isArray(res) ? res : [];
     }
     async function kgForward(subPath, method = "GET", body = null) {
-        return await api("/api/admin/integrations/proxy/forward", {
-            method: "POST",
-            body: JSON.stringify({ system: "kg", subPath, method, body })
-        });
-    }
-    function setKgOut(obj) {
-        const el = document.getElementById("kgEndpointOut");
-        if (!el) return;
-        el.textContent = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
+        const options = { method };
+        if (body != null && method !== "GET") options.body = JSON.stringify(body);
+        return await api(subPath, options);
     }
     function escapeHtml(v) {
         return String(v == null ? "" : v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
-    async function loadKgEndpoints() {
-        try {
-            const ep = await api("/api/admin/integrations/endpoints");
-            if (ep && ep.paths) {
-                if (ep.paths.kgEntities) kgPaths.entities = ep.paths.kgEntities;
-                if (ep.paths.kgRelations) kgPaths.relations = ep.paths.kgRelations;
-                if (ep.paths.kgTriples) kgPaths.triples = ep.paths.kgTriples;
-                if (ep.paths.kgSyncJobs) kgPaths.syncJobs = ep.paths.kgSyncJobs;
-            }
-            setKgOut({
-                mode: ep && ep.mode,
-                kgSystemBaseUrl: ep && ep.kgSystemBaseUrl,
-                kgPaths
-            });
-            setMsg("kgMsg", "KG 对接配置已加载", true);
-        } catch (e) { setMsg("kgMsg", e.message, false); }
-    }
-    function fillKgSamplePayload() {
-        const type = currentKgResourceType();
-        const el = document.getElementById("kgEditPayload");
-        if (!el) return;
-        if (type === "entities") el.value = JSON.stringify({ name: "示例实体", type: "Artifact", properties: { era: "清代" } }, null, 2);
-        else if (type === "relations") el.value = JSON.stringify({ name: "属于", fromType: "Artifact", toType: "Dynasty" }, null, 2);
-        else el.value = JSON.stringify({ subjectId: 1, predicateId: 2, objectId: 3, properties: { source: "admin-backend" } }, null, 2);
+    function kgRowActions(encoded, deleteFn, deleteArg) {
+        return `<button class="btn btn-light" onclick="fillKgPayloadFromEncoded('${encoded}')">编辑</button> `
+            + `<button class="btn btn-danger" onclick="${deleteFn}('${deleteArg}')">删除</button>`;
     }
     function fillKgPayloadFromEncoded(encoded) {
         try {
             const json = JSON.parse(decodeURIComponent(encoded));
-            const el = document.getElementById("kgEditPayload");
-            if (el) el.value = JSON.stringify(json, null, 2);
-            if (json && json.id != null) {
-                const del = document.getElementById("kgDeleteId");
-                if (del) del.value = json.id;
-            }
+            const type = currentKgResourceType();
+            if (type === "entities") fillKgEntityFormFromRow(json);
+            else if (type === "triples") fillKgRelationFormFromRow(json);
         } catch (_) { }
     }
-    async function loadKgResourceList() {
+    async function deleteKgEntityRow(uriEnc) {
+        const uri = decodeURIComponent(uriEnc);
+        if (!confirm(`确定删除实体？\n${uri}`)) return;
+        try {
+            await kgForward(`${kgPaths.entities}?uri=${encodeURIComponent(uri)}`, "DELETE", {});
+            kgEditingKey = null;
+            kgShowSuccessMsg("✓ 删除成功，正在刷新…");
+            await saveKgResourceAfterSync("实体删除成功", "entities", { uri }, true);
+            resetKgEntityForm();
+        } catch (e) { setMsg("kgMsg", e.message, false); }
+    }
+    async function deleteKgTripleRow(idEnc) {
+        const id = decodeURIComponent(idEnc);
+        if (!confirm(`确定删除三元组？\n${id}`)) return;
+        try {
+            await kgForward(`${kgPaths.triples}?id=${encodeURIComponent(id)}`, "DELETE", {});
+            kgEditingKey = null;
+            kgShowSuccessMsg("✓ 删除成功，正在刷新…");
+            await saveKgResourceAfterSync("三元组删除成功", "triples", { id }, true);
+            resetKgRelationForm();
+        } catch (e) { setMsg("kgMsg", e.message, false); }
+    }
+    async function loadKgResourceList(silent) {
         const type = currentKgResourceType();
+        syncKgToolbarVisibility();
         const table = document.getElementById("kgTable");
         if (!table) return;
         try {
-            const res = await kgForward(kgResourcePath(type), "GET", null);
-            const rows = Array.isArray(res && res.responseBody) ? res.responseBody : [];
-            table.innerHTML = "<tr><th>ID</th><th>内容(JSON)</th><th>操作</th></tr>" + rows.map(x => {
-                const encoded = encodeURIComponent(JSON.stringify(x || {}));
-                const id = x && x.id != null ? x.id : "";
-                const pretty = escapeHtml(JSON.stringify(x, null, 2));
-                return `<tr><td>${id}</td><td><pre style="margin:0; white-space:pre-wrap; font-size:12px;">${pretty}</pre></td><td><button class="btn btn-light" onclick="fillKgPayloadFromEncoded('${encoded}')">填入编辑器</button></td></tr>`;
-            }).join("");
-            setMsg("kgMsg", `已加载${kgResourceTypeToZh(type)}列表（${rows.length} 条）`, true);
+            const res = await api(kgResourceApiPath(type));
+            const rows = res.items || [];
+            const prevTotal = kgPageMeta.total;
+            kgPageMeta = {
+                total: res.total || 0,
+                totalPages: res.totalPages || 0,
+                page: res.page || 0,
+                size: res.size || kgCurrentPageSize()
+            };
+            kgPageIndex = kgPageMeta.page;
+            if (type === "entities") {
+                table.innerHTML = "<tr><th>名称</th><th>类型</th><th>uri</th><th>操作</th></tr>" + (rows.length ? rows.map(x => {
+                    const encoded = encodeURIComponent(JSON.stringify(x || {}));
+                    const uriEnc = encodeURIComponent(x.uri || "");
+                    const labelZh = kgEntityLabelToZh(x.label || "");
+                    return `<tr><td>${escapeHtml(x.name || x.title || "")}</td><td>${escapeHtml(labelZh)}（${escapeHtml(x.label || "")}）</td><td style="font-size:11px; word-break:break-all;">${escapeHtml(x.uri || "")}</td><td>${kgRowActions(encoded, "deleteKgEntityRow", uriEnc)}</td></tr>`;
+                }).join("") : `<tr><td colspan="4" class="muted">该类型暂无实体。</td></tr>`);
+            } else if (type === "relationTypes") {
+                table.innerHTML = "<tr><th>类型名称</th><th>三元组数量</th><th>操作</th></tr>" + (rows.length ? rows.map(x => {
+                    const nameEnc = encodeURIComponent(x.name || "");
+                    const viewBtn = `<button class="btn btn-light" onclick="kgViewRelationTriples('${nameEnc}')">查看三元组</button> `;
+                    const delBtn = `<button class="btn btn-danger" onclick="deleteKgRelTypeRow('${nameEnc}')">删除</button>`;
+                    return `<tr><td>${escapeHtml(x.name || "")}</td><td>${x.count || 0}</td><td>${viewBtn}${delBtn}</td></tr>`;
+                }).join("") : `<tr><td colspan="3" class="muted">暂无关系类型。</td></tr>`);
+            } else {
+                table.innerHTML = "<tr><th>主语</th><th>关系类型</th><th>宾语</th><th>操作</th></tr>" + (rows.length ? rows.map(x => {
+                    const encoded = encodeURIComponent(JSON.stringify(x || {}));
+                    const idEnc = encodeURIComponent(x.id || "");
+                    return `<tr><td>${escapeHtml(x.subject || "")}</td><td>${escapeHtml(x.relationType || "")}</td><td>${escapeHtml(x.object || "")}</td><td>${kgRowActions(encoded, "deleteKgTripleRow", idEnc)}</td></tr>`;
+                }).join("") : `<tr><td colspan="4" class="muted">暂无三元组，或当前筛选无结果。</td></tr>`);
+            }
+            renderKgPagination();
+            if (!silent) {
+                const sortLabel = (document.getElementById("kgSort")?.value === "updated") ? "最新优先" : "名称";
+                setMsg("kgMsg", `已加载${kgResourceTypeToZh(type)}（第 ${kgPageIndex + 1} 页，本页 ${rows.length} 条，共 ${kgPageMeta.total} 条，排序：${sortLabel}）`, true);
+            }
+            kgLastTotal = kgPageMeta.total;
+            return { prevTotal, rows };
         } catch (e) {
-            table.innerHTML = "<tr><th>ID</th><th>内容(JSON)</th><th>操作</th></tr>";
-            setMsg("kgMsg", e.message, false);
+            table.innerHTML = `<tr><th>提示</th></tr><tr><td class="muted">${escapeHtml(e.message)}</td></tr>`;
+            renderKgPagination();
+            if (!silent) setMsg("kgMsg", e.message, false);
+            throw e;
         }
     }
-    async function saveKgResource() {
-        const type = currentKgResourceType();
-        const ta = document.getElementById("kgEditPayload");
-        if (!ta || !ta.value.trim()) { setMsg("kgMsg", "请先填写 JSON 内容", false); return; }
-        let payload;
+    function kgViewRelationTriples(nameEnc) {
+        const name = decodeURIComponent(nameEnc);
+        document.getElementById("kgResourceType").value = "triples";
+        const sel = document.getElementById("kgTripleRelationFilter");
+        if (sel) sel.value = name;
+        kgPageIndex = 0;
+        onKgResourceTypeChange();
+    }
+    async function saveKgResourceAfterSync(actionLabel, type, payload, isUpdate) {
+        const beforeTotal = kgPageMeta.total;
+        await loadKgRelationTypeOptions();
+        await loadKgOverview();
+        await loadKgResourceList(true);
         try {
-            payload = JSON.parse(ta.value);
-        } catch (_) {
-            setMsg("kgMsg", "JSON 格式不正确", false);
+            await kgForward(kgPaths.syncJobs, "POST", { triggerBy: "admin-backend" });
+            await loadKgSyncJobs(true);
+        } catch (e) {
+            setMsg("kgMsg", `${actionLabel}，但同步触发失败：${e.message}`, false);
+            document.getElementById("kgMsg")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
             return;
         }
-        try {
-            if (payload.id != null && payload.id !== "") {
-                await kgForward(`${kgResourcePath(type)}/${encodeURIComponent(payload.id)}`, "PUT", payload);
-                setMsg("kgMsg", `${kgResourceTypeToZh(type)}更新成功`, true);
-            } else {
-                await kgForward(kgResourcePath(type), "POST", payload);
-                setMsg("kgMsg", `${kgResourceTypeToZh(type)}新增成功`, true);
-            }
-            await loadKgResourceList();
-        } catch (e) { setMsg("kgMsg", e.message, false); }
+        const afterTotal = kgPageMeta.total;
+        let extra = "";
+        if (!isUpdate && afterTotal > beforeTotal) {
+            extra = ` 总数 ${beforeTotal} → ${afterTotal}（+1）`;
+        } else if (!isUpdate && afterTotal === beforeTotal) {
+            extra = "（请检查列表筛选条件是否与刚添加的数据一致）";
+        }
+        const doneText = isUpdate ? "修改成功" : "保存成功";
+        kgShowSuccessMsg(`✓ ${actionLabel || doneText}！已写入 Neo4j 并触发同步。${extra} 当前共 ${afterTotal} 条。`);
     }
-    async function deleteKgResourceById() {
-        const type = currentKgResourceType();
-        const el = document.getElementById("kgDeleteId");
-        const id = el ? el.value.trim() : "";
-        if (!id) { setMsg("kgMsg", "请输入要删除的 ID", false); return; }
-        if (!confirm(`确定删除${kgResourceTypeToZh(type)} ID=${id}？`)) return;
-        try {
-            await kgForward(`${kgResourcePath(type)}/${encodeURIComponent(id)}`, "DELETE", {});
-            setMsg("kgMsg", `${kgResourceTypeToZh(type)}删除成功`, true);
-            await loadKgResourceList();
-        } catch (e) { setMsg("kgMsg", e.message, false); }
-    }
-    async function loadKgSyncJobs() {
+    async function loadKgSyncJobs(silent) {
         const table = document.getElementById("kgSyncJobTable");
         if (!table) return;
         try {
-            const res = await kgForward(kgPaths.syncJobs, "GET", null);
-            const rows = Array.isArray(res && res.responseBody) ? res.responseBody : [];
-            table.innerHTML = "<tr><th>ID</th><th>状态</th><th>开始时间</th><th>结束时间</th><th>详情</th></tr>" + rows.map(x =>
+            const rows = kgResponseRows(await kgForward(kgPaths.syncJobs, "GET", null));
+            table.innerHTML = "<tr><th>ID</th><th>状态</th><th>开始时间</th><th>结束时间</th><th>详情</th></tr>" + (rows.length ? rows.map(x =>
                 `<tr><td>${x.id || ""}</td><td>${x.status || ""}</td><td>${x.startedAt || x.startTime || ""}</td><td>${x.finishedAt || x.endTime || ""}</td><td>${x.message || x.detail || ""}</td></tr>`
-            ).join("");
-            setMsg("kgMsg", `同步任务已刷新（${rows.length} 条）`, true);
+            ).join("") : `<tr><td colspan="5" class="muted">暂无同步记录</td></tr>`);
+            if (!silent) setMsg("kgMsg", `同步任务已刷新（${rows.length} 条）`, true);
         } catch (e) {
             table.innerHTML = "<tr><th>ID</th><th>状态</th><th>开始时间</th><th>结束时间</th><th>详情</th></tr>";
-            setMsg("kgMsg", e.message, false);
+            if (!silent) setMsg("kgMsg", e.message, false);
         }
     }
     async function triggerKgSync() {
         try {
             await kgForward(kgPaths.syncJobs, "POST", { triggerBy: "admin-backend" });
-            setMsg("kgMsg", "已触发图数据库同步任务", true);
+            setMsg("kgMsg", "已触发图数据库同步", true);
             await loadKgSyncJobs();
+            await loadKgOverview();
         } catch (e) { setMsg("kgMsg", e.message, false); }
     }
 
@@ -1897,10 +2907,10 @@
     function backupTableZhName(tableName) {
         const m = {
             admin_users: "后台管理员",
-            platform_users: "平台用户",
-            unified_users: "统一用户主表",
-            unified_user_behaviors: "统一用户行为记录",
-            unified_user_permission_audit: "统一用户权限审计",
+            users: "前台用户",
+            user_permission_audit: "用户权限审计",
+            admin_role_permission_audit: "角色权限变更审计",
+            restore_logs: "数据恢复日志",
             user_behavior_records: "平台用户行为记录",
             review_content: "内容审核数据",
             review_strategy_config: "自动审核策略",
@@ -1982,14 +2992,62 @@
             await loadBackupRecords();
         } catch (e) { setMsg("backupMsg", e.message, false); }
     }
+    function isSuperAdmin() {
+        return (currentAppRole || "").trim().toUpperCase() === "SUPER_ADMIN";
+    }
+    async function refreshSessionRole() {
+        try {
+            const resp = await api("/api/admin/auth/me");
+            const me = resp.adminUser || resp;
+            if (me && (me.role || me.roleCode)) {
+                currentAppRole = me.role || me.roleCode || "";
+            }
+        } catch (_) { }
+    }
+    function canRestoreUi() {
+        if (backupCanRestore) return true;
+        if (isSuperAdmin()) return true;
+        return hasPerm("BACKUP_MANAGE") && hasPerm("ADMIN_MANAGE");
+    }
+    async function refreshBackupRestoreEligible() {
+        try {
+            const info = await api("/api/admin/backup/restore-eligible");
+            backupCanRestore = !!(info && info.eligible);
+            if (info && info.roleCode) {
+                currentAppRole = info.roleCode;
+            }
+        } catch (_) {
+            backupCanRestore = canRestoreUi();
+        }
+        if (!backupCanRestore && canRestoreUi()) {
+            backupCanRestore = true;
+        }
+    }
+    async function loadBackupPage() {
+        await refreshSessionRole();
+        await refreshBackupRestoreEligible();
+        await loadBackupConfig();
+        await loadBackupTables();
+        await loadBackupRecords();
+        await loadRestoreLogs();
+    }
     async function loadBackupRecords() {
+        await refreshBackupRestoreEligible();
         try {
             const list = await api("/api/admin/backup/records");
             const table = document.getElementById("backupTable");
             if (!table) return;
+            const fmtScope = s => {
+                const t = s || "-";
+                if (t.length <= 48) return escapeHtml(t);
+                return `<span title="${escapeHtml(t)}">${escapeHtml(t.slice(0, 48))}…</span>`;
+            };
+            const restoreBtn = x => canRestoreUi()
+                ? `<button class="btn btn-danger" onclick="restoreBackup(${x.id})">恢复</button>`
+                : `<span class="muted" style="font-size:11px;" title="当前角色：${escapeHtml(currentAppRole || "未知")}">仅超管</span>`;
             table.innerHTML =
-                "<tr><th>ID</th><th>时间</th><th>类型</th><th>范围</th><th>大小(Byte)</th><th>操作人</th><th>状态</th><th>备注</th><th>操作</th></tr>" +
-                (list || []).map(x => `<tr><td>${x.id}</td><td>${x.backupTime || ""}</td><td>${x.backupType || ""}</td><td>${x.tableScope || "-"}</td><td>${x.fileSize || 0}</td><td>${x.operator || ""}</td><td>${x.status || ""}</td><td>${x.note || ""}</td><td><button class="btn btn-light" onclick="downloadBackup(${x.id})">下载</button> <button class="btn btn-danger" onclick="restoreBackup(${x.id})">恢复</button></td></tr>`).join("");
+                "<tr><th>ID</th><th>时间</th><th>类型</th><th>范围</th><th>大小</th><th>操作人</th><th>状态</th><th style=\"white-space:nowrap;\">操作</th></tr>" +
+                (list || []).map(x => `<tr><td>${x.id}</td><td style="white-space:nowrap;">${x.backupTime || ""}</td><td>${x.backupType || ""}</td><td style="max-width:220px;">${fmtScope(x.tableScope)}</td><td>${x.fileSize || 0}</td><td>${escapeHtml(x.operator || "")}</td><td>${x.status || ""}</td><td style="white-space:nowrap;">${restoreBtn(x)} <button class="btn btn-light" onclick="downloadBackup(${x.id})">下载</button></td></tr>`).join("");
         } catch (e) { setMsg("backupMsg", e.message, false); }
     }
     async function downloadBackup(id) {
@@ -2006,36 +3064,67 @@
         } catch (e) { setMsg("backupMsg", e.message, false); }
     }
     async function restoreBackup(id) {
-        const txt = prompt("恢复将覆盖当前数据。请输入 CONFIRM_RESTORE 确认：");
+        await refreshBackupRestoreEligible();
+        if (!canRestoreUi()) {
+            setMsg("backupMsg", `仅超级管理员可执行数据恢复（当前角色：${currentAppRole || "未知"}）`, false);
+            return;
+        }
+        if (!confirm("【第一步确认】恢复将覆盖当前数据库中的相关表，且不可撤销。\n\n确定要继续吗？")) {
+            return;
+        }
+        const txt = prompt("【第二步确认】请输入 CONFIRM_RESTORE 以执行恢复：");
         if (!txt) return;
         try {
-            await api(`/api/admin/backup/restore/${id}`, { method: "POST", body: JSON.stringify({ confirmText: txt }) });
+            await api(`/api/admin/backup/restore/${id}`, {
+                method: "POST",
+                body: JSON.stringify({ acknowledged: true, confirmText: txt })
+            });
             setMsg("backupMsg", "恢复完成", true);
             await loadBackupRecords();
+            await loadRestoreLogs();
+        } catch (e) { setMsg("backupMsg", e.message, false); }
+    }
+    async function loadRestoreLogs() {
+        try {
+            const list = await api("/api/admin/backup/restore-logs");
+            const table = document.getElementById("restoreLogTable");
+            if (!table) return;
+            table.innerHTML = "<tr><th>ID</th><th>备份ID</th><th>操作人</th><th>范围</th><th>状态</th><th>开始时间</th><th>结束时间</th><th>错误信息</th></tr>" +
+                ((list || []).length ? list.map(x =>
+                    `<tr><td>${x.id || ""}</td><td>${x.backupRecordId || ""}</td><td>${escapeHtml(x.operator || "")}</td><td style="font-size:11px;">${escapeHtml(x.restoreScope || "")}${x.tableScope ? " · " + escapeHtml(String(x.tableScope).slice(0, 80)) : ""}</td><td>${escapeHtml(x.status || "")}</td><td>${x.startedAt || ""}</td><td>${x.finishedAt || ""}</td><td style="font-size:11px; color:#b91c1c;">${escapeHtml(x.errorMessage || "")}</td></tr>`
+                ).join("") : `<tr><td colspan="8" class="muted">暂无恢复记录</td></tr>`);
         } catch (e) { setMsg("backupMsg", e.message, false); }
     }
 
-    function setMenuByRole(role) {
-        const pages = {
-            SUPER_ADMIN: ["dashboardPage", "adminPage", "rbacPage", "userPage", "reviewPage", "artifactPage", "kgPage", "backupPage", "integrationPage", "logPage"],
-            DATA_ADMIN: ["artifactPage", "kgPage"],
-            CONTENT_REVIEWER: ["dashboardPage", "reviewPage"]
+    function setMenuByPermissions(permissions, role) {
+        const permSet = new Set(permissions || []);
+        const pagePermMap = {
+            dashboardPage: ["STATS_VIEW"],
+            adminPage: ["ADMIN_MANAGE"],
+            rbacPage: ["ROLE_VIEW", "PERMISSION_ASSIGN", "ROLE_CREATE"],
+            userPage: ["USER_VIEW"],
+            reviewPage: ["REVIEW_VIEW", "REVIEW_ACTION"],
+            artifactPage: ["ARTIFACT_VIEW"],
+            kgPage: ["ARTIFACT_VIEW"],
+            backupPage: ["BACKUP_MANAGE"],
+            logPage: ["LOG_VIEW"]
         };
-        const allow = new Set(pages[role] || ["dashboardPage", "logPage"]);
         document.querySelectorAll(".menu-btn").forEach(btn => {
             const p = btn.getAttribute("data-page");
             if (!p) { btn.style.display = "block"; return; }
-            btn.style.display = allow.has(p) ? "block" : "none";
+            const required = pagePermMap[p] || [];
+            const show = required.length === 0 || required.some(code => permSet.has(code));
+            btn.style.display = show ? "block" : "none";
         });
-        const sensitiveMenuBtn = document.getElementById("sensitiveMenuBtn");
-        const reviewStatsMenuBtn = document.getElementById("reviewStatsMenuBtn");
-        if (sensitiveMenuBtn) sensitiveMenuBtn.style.display = role === "CONTENT_REVIEWER" ? "block" : "none";
-        if (reviewStatsMenuBtn) reviewStatsMenuBtn.style.display = role === "CONTENT_REVIEWER" ? "block" : "none";
         const switcher = document.getElementById("reviewSectionSwitcher");
-        if (switcher) switcher.style.display = role === "SUPER_ADMIN" ? "flex" : "none";
+        if (switcher) switcher.style.display = permSet.has("ROLE_VIEW") || role === "SUPER_ADMIN" ? "flex" : "none";
         const strategyPanel = document.getElementById("strategyLowMaxScore")?.closest(".panel");
-        if (strategyPanel) strategyPanel.style.display = (role === "SUPER_ADMIN" || role === "CONTENT_REVIEWER") ? "block" : "none";
+        if (strategyPanel) strategyPanel.style.display = permSet.has("REVIEW_ACTION") ? "block" : "none";
         ensureDefaultPageVisible();
+    }
+
+    function setMenuByRole(role) {
+        setMenuByPermissions(currentPermissions, role);
     }
 
     async function loadReviewContents() {
@@ -2044,13 +3133,15 @@
             const path = p.toString() ? `/api/admin/reviews?${p}` : "/api/admin/reviews";
             const data = await api(path);
             document.getElementById("reviewTable").innerHTML =
-                "<tr><th><input type=\"checkbox\" onchange=\"toggleAllReviews(this.checked)\"></th><th>ID</th><th>类型</th><th>来源</th><th>提交人</th><th>文本</th><th>风险分</th><th>状态</th><th>自动审核</th><th>提交时间</th><th>拒绝/复审原因</th><th>审核人</th><th>操作</th></tr>" +
+                "<tr><th><input type=\"checkbox\" onchange=\"toggleAllReviews(this.checked)\"></th><th>ID</th><th>数据表</th><th>类型</th><th>来源</th><th>提交人</th><th>文本</th><th>风险分</th><th>状态</th><th>自动审核</th><th>提交时间</th><th>拒绝/复审原因</th><th>审核人</th><th>操作</th></tr>" +
                 data.map(x => {
+                    const st = x.sourceTable || "";
                     const ops = (x.reviewStatus === "PENDING" || x.reviewStatus === "RECHECK")
-                        ? `<button class="btn btn-success" onclick="reviewAction(${x.id}, 'APPROVED')">通过</button> <button class="btn btn-light" onclick="reviewAction(${x.id}, 'RECHECK')">复审</button> <button class="btn btn-danger" onclick="reviewAction(${x.id}, 'REJECTED')">拒绝</button>`
-                        : `<button class="btn btn-light" onclick="reviewAction(${x.id}, 'RECHECK')">标记复审</button>`;
+                        ? `<button class="btn btn-success" onclick="reviewAction('${st}', ${x.id}, 'APPROVED')">通过</button> <button class="btn btn-light" onclick="reviewAction('${st}', ${x.id}, 'RECHECK')">复审</button> <button class="btn btn-danger" onclick="reviewAction('${st}', ${x.id}, 'REJECTED')">拒绝</button>`
+                        : `<button class="btn btn-light" onclick="reviewAction('${st}', ${x.id}, 'RECHECK')">标记复审</button>`;
                     const auto = x.autoReviewed ? (x.autoDecisionNote || "已自动审核") : "人工";
-                    return `<tr><td><input type="checkbox" class="review-pick" data-id="${x.id}"></td><td>${x.id}</td><td><span class="badge">${contentTypeToZh(x.contentType)}</span></td><td>${x.sourceSystem}</td><td>${x.submitter}</td><td>${x.contentText}</td><td>${x.riskScore}</td><td><span class="badge">${reviewStatusToZh(x.reviewStatus)}</span></td><td>${auto}</td><td>${x.submitTime || ""}</td><td>${x.rejectReason || ""}</td><td>${x.reviewer || ""}</td><td>${ops}</td></tr>`;
+                    const text = x.contentText || x.contentUrl || "";
+                    return `<tr><td><input type="checkbox" class="review-pick" data-source-table="${st}" data-id="${x.id}"></td><td>${x.id}</td><td><span class="badge">${sourceTableToZh(st)}</span></td><td><span class="badge">${contentTypeToZh(x.contentType)}</span></td><td>${x.sourceSystem || ""}</td><td>${x.submitter || ""}</td><td>${text}</td><td>${x.riskScore ?? ""}</td><td><span class="badge">${reviewStatusToZh(x.reviewStatus)}</span></td><td>${auto}</td><td>${x.submitTime || ""}</td><td>${x.rejectReason || ""}</td><td>${x.reviewer || ""}</td><td>${ops}</td></tr>`;
                 }).join("");
             setMsg("reviewMsg", "加载成功", true);
         } catch (e) { setMsg("reviewMsg", e.message, false); }
@@ -2058,24 +3149,29 @@
 
     async function createReviewContent() {
         try {
+            const userIdRaw = document.getElementById("newReviewUserId").value.trim();
+            const museumRaw = document.getElementById("newReviewMuseumId").value.trim();
             const payload = {
                 contentType: document.getElementById("newReviewType").value,
                 sourceSystem: document.getElementById("newReviewSourceSystem").value,
-                submitter: document.getElementById("newReviewSubmitter").value.trim(),
+                submitter: document.getElementById("newReviewSubmitter").value.trim() || null,
+                userId: userIdRaw ? Number(userIdRaw) : null,
+                museumId: museumRaw ? Number(museumRaw) : null,
+                objectId: document.getElementById("newReviewObjectId").value.trim() || null,
                 contentText: document.getElementById("newReviewText").value.trim(),
                 contentUrl: document.getElementById("newReviewUrl").value.trim() || null
             };
             await api("/api/admin/reviews", { method: "POST", body: JSON.stringify(payload) });
-            setMsg("reviewMsg", "新增待审核内容成功");
+            setMsg("reviewMsg", "已写入队友共享表并进入审核队列", true);
             await loadReviewContents();
         } catch (e) { setMsg("reviewMsg", e.message, false); }
     }
 
-    let rejectModalReviewId = null;
-    let rejectModalBatchIds = null;
-    function openRejectModal(reviewId) {
-        rejectModalBatchIds = null;
-        rejectModalReviewId = reviewId;
+    let rejectModalTarget = null;
+    let rejectModalBatchTargets = null;
+    function openRejectModal(sourceTable, reviewId) {
+        rejectModalBatchTargets = null;
+        rejectModalTarget = { sourceTable, id: reviewId };
         const t = document.getElementById("rejectModalTitle");
         const h = document.getElementById("rejectModalHelp");
         if (t) t.textContent = "填写拒绝原因";
@@ -2087,13 +3183,13 @@
         m.setAttribute("aria-hidden", "false");
         setTimeout(() => ta.focus(), 0);
     }
-    function openBatchRejectModal(ids) {
-        if (!ids || !ids.length) return;
-        rejectModalReviewId = null;
-        rejectModalBatchIds = ids.slice();
+    function openBatchRejectModal(targets) {
+        if (!targets || !targets.length) return;
+        rejectModalTarget = null;
+        rejectModalBatchTargets = targets.slice();
         const t = document.getElementById("rejectModalTitle");
         const h = document.getElementById("rejectModalHelp");
-        if (t) t.textContent = `批量填写拒绝原因（${ids.length} 条）`;
+        if (t) t.textContent = `批量填写拒绝原因（${targets.length} 条）`;
         if (h) h.textContent = "将逐条记录在审核单中，不填写无法提交拒绝。";
         const m = document.getElementById("rejectModal");
         const ta = document.getElementById("rejectModalReason");
@@ -2106,19 +3202,21 @@
         const m = document.getElementById("rejectModal");
         m.classList.remove("open");
         m.setAttribute("aria-hidden", "true");
-        rejectModalReviewId = null;
-        rejectModalBatchIds = null;
+        rejectModalTarget = null;
+        rejectModalBatchTargets = null;
     }
     async function submitRejectModal() {
         const rejectReason = document.getElementById("rejectModalReason").value.trim();
         if (!rejectReason) { setMsg("reviewMsg", "请填写拒绝原因", false); return; }
-        if (rejectModalBatchIds && rejectModalBatchIds.length) {
+        if (rejectModalBatchTargets && rejectModalBatchTargets.length) {
             try {
-                const p = new URLSearchParams();
-                rejectModalBatchIds.forEach(id => p.append("ids", String(id)));
-                await api(`/api/admin/reviews/batch/action?${p.toString()}`, {
+                await api("/api/admin/reviews/batch/action", {
                     method: "PATCH",
-                    body: JSON.stringify({ reviewStatus: "REJECTED", rejectReason })
+                    body: JSON.stringify({
+                        targets: rejectModalBatchTargets,
+                        reviewStatus: "REJECTED",
+                        rejectReason
+                    })
                 });
                 closeRejectModal();
                 setMsg("reviewMsg", "批量审核成功", true);
@@ -2127,22 +3225,25 @@
             } catch (e) { setMsg("reviewMsg", e.message, false); }
             return;
         }
-        const id = rejectModalReviewId;
-        if (id == null) return;
+        const target = rejectModalTarget;
+        if (!target) return;
         try {
-            await api(`/api/admin/reviews/${id}/action`, { method: "PATCH", body: JSON.stringify({ reviewStatus: "REJECTED", rejectReason }) });
+            await api(`/api/admin/reviews/${target.sourceTable}/${target.id}/action`, {
+                method: "PATCH",
+                body: JSON.stringify({ reviewStatus: "REJECTED", rejectReason })
+            });
             closeRejectModal();
             setMsg("reviewMsg", "审核操作成功", true);
             await loadReviewContents();
             await loadReviewStats();
         } catch (e) { setMsg("reviewMsg", e.message, false); }
     }
-    let recheckModalIds = null;
-    function openRecheckModal(ids) {
-        if (!ids || !ids.length) return;
-        recheckModalIds = ids.slice();
+    let recheckModalTargets = null;
+    function openRecheckModal(targets) {
+        if (!targets || !targets.length) return;
+        recheckModalTargets = targets.slice();
         const title = document.getElementById("recheckModalTitle");
-        if (title) title.textContent = ids.length > 1 ? `批量标记复审（${ids.length} 条）` : "填写复审备注";
+        if (title) title.textContent = targets.length > 1 ? `批量标记复审（${targets.length} 条）` : "填写复审备注";
         const m = document.getElementById("recheckModal");
         const ta = document.getElementById("recheckModalNote");
         ta.value = "";
@@ -2154,18 +3255,28 @@
         const m = document.getElementById("recheckModal");
         m.classList.remove("open");
         m.setAttribute("aria-hidden", "true");
-        recheckModalIds = null;
+        recheckModalTargets = null;
     }
     async function submitRecheckModal() {
-        if (!recheckModalIds || !recheckModalIds.length) return;
-        const note = document.getElementById("recheckModalNote").value.trim() || null;
+        if (!recheckModalTargets || !recheckModalTargets.length) return;
+        const note = document.getElementById("recheckModalNote").value.trim();
+        if (!note) { setMsg("reviewMsg", "请填写复审说明", false); return; }
         try {
-            if (recheckModalIds.length === 1) {
-                await api(`/api/admin/reviews/${recheckModalIds[0]}/action`, { method: "PATCH", body: JSON.stringify({ reviewStatus: "RECHECK", rejectReason: note }) });
+            if (recheckModalTargets.length === 1) {
+                const t = recheckModalTargets[0];
+                await api(`/api/admin/reviews/${t.sourceTable}/${t.id}/action`, {
+                    method: "PATCH",
+                    body: JSON.stringify({ reviewStatus: "RECHECK", rejectReason: note })
+                });
             } else {
-                const p = new URLSearchParams();
-                recheckModalIds.forEach(id => p.append("ids", String(id)));
-                await api(`/api/admin/reviews/batch/action?${p.toString()}`, { method: "PATCH", body: JSON.stringify({ reviewStatus: "RECHECK", rejectReason: note }) });
+                await api("/api/admin/reviews/batch/action", {
+                    method: "PATCH",
+                    body: JSON.stringify({
+                        targets: recheckModalTargets,
+                        reviewStatus: "RECHECK",
+                        rejectReason: note
+                    })
+                });
             }
             closeRecheckModal();
             setMsg("reviewMsg", "审核操作成功", true);
@@ -2175,23 +3286,20 @@
     }
 
     async function batchReviewAction(status) {
-        const ids = selectedReviewIds();
-        if (!ids.length) { setMsg("reviewMsg", "请先勾选待操作内容", false); return; }
+        const targets = selectedReviewTargets();
+        if (!targets.length) { setMsg("reviewMsg", "请先勾选待操作内容", false); return; }
         if (status === "RECHECK") {
-            openRecheckModal(ids);
+            openRecheckModal(targets);
             return;
         }
         if (status === "REJECTED") {
-            openBatchRejectModal(ids);
+            openBatchRejectModal(targets);
             return;
         }
-        const p = new URLSearchParams();
-        ids.forEach(id => p.append("ids", String(id)));
-        let rejectReason = null;
         try {
-            await api(`/api/admin/reviews/batch/action?${p.toString()}`, {
+            await api("/api/admin/reviews/batch/action", {
                 method: "PATCH",
-                body: JSON.stringify({ reviewStatus: status, rejectReason })
+                body: JSON.stringify({ targets, reviewStatus: status, rejectReason: null })
             });
             setMsg("reviewMsg", "批量审核成功", true);
             await loadReviewContents();
@@ -2413,17 +3521,20 @@
         const m = document.getElementById("rejectModal");
         if (m.classList.contains("open")) { closeRejectModal(); }
     });
-    async function reviewAction(id, status) {
+    async function reviewAction(sourceTable, id, status) {
         if (status === "REJECTED") {
-            openRejectModal(id);
+            openRejectModal(sourceTable, id);
             return;
         }
         if (status === "RECHECK") {
-            openRecheckModal([id]);
+            openRecheckModal([{ sourceTable, id }]);
             return;
         }
         try {
-            await api(`/api/admin/reviews/${id}/action`, { method: "PATCH", body: JSON.stringify({ reviewStatus: status, rejectReason: null }) });
+            await api(`/api/admin/reviews/${sourceTable}/${id}/action`, {
+                method: "PATCH",
+                body: JSON.stringify({ reviewStatus: status, rejectReason: null })
+            });
             setMsg("reviewMsg", "审核操作成功", true);
             await loadReviewContents();
             await loadReviewStats();
