@@ -16,3 +16,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Debug output files
+*-output*.txt

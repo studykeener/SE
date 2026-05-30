@@ -19,7 +19,7 @@ public class OperationLog {
     @Column(name = "operator_id")
     private Long operatorId;
 
-    @Column(name = "operator", nullable = false, length = 50)
+    @Column(name = "operator_name", nullable = false, length = 50)
     private String operator;
 
     @Column(length = 32)
