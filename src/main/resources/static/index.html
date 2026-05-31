@@ -414,8 +414,6 @@
                                 <option value="">全部类型</option>
                                 <option value="COMMENT">评论</option>
                                 <option value="IMAGE">图片</option>
-                                <option value="VIDEO">视频</option>
-                                <option value="AUDIO">音频</option>
                             </select>
                             <select class="select" id="reviewFilterSource" title="来源子系统">
                                 <option value="">全部来源</option>
@@ -993,8 +991,6 @@
     function contentTypeToZh(t) {
         if (t === "COMMENT") return "评论";
         if (t === "IMAGE") return "图片";
-        if (t === "VIDEO") return "视频";
-        if (t === "AUDIO") return "音频";
         return t;
     }
     function operationTypeToZh(t) {

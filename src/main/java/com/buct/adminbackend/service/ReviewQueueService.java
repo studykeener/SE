@@ -69,7 +69,7 @@ public class ReviewQueueService {
         if (request.contentType() == ContentType.IMAGE) {
             return createTestPhoto(request);
         }
-        throw new IllegalArgumentException("当前仅支持评论(comment)与上传照片(user_upload_photo)的审核，视频/音频待队友接入后再管理");
+        throw new IllegalArgumentException("当前仅支持评论(comment)与上传照片(user_upload_photo)的审核");
     }
 
     /** 队友系统提交评论（集成 API 入口） */
