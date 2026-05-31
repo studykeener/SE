@@ -37,7 +37,7 @@ public class ReviewStrategyConfig {
     @Column(name = "updated_by")
     private Long updatedBy;
 
-    @Column(name = "updated_at", nullable = false)
+    @Column(name = "updated_at")
     private LocalDateTime updatedAt = LocalDateTime.now();
 
     @PreUpdate

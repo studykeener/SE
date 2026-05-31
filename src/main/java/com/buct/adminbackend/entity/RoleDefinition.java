@@ -25,16 +25,15 @@ public class RoleDefinition {
     @Column(length = 300)
     private String description;
 
-    @Column(name = "is_system", nullable = false)
+    @Column(name = "is_system")
     private Boolean isSystem = false;
 
-    @Column(nullable = false)
     private Integer status = 1;
 
-    @Column(name = "created_at", nullable = false)
+    @Column(name = "created_at")
     private LocalDateTime createdAt = LocalDateTime.now();
 
-    @Column(name = "updated_at", nullable = false)
+    @Column(name = "updated_at")
     private LocalDateTime updatedAt = LocalDateTime.now();
 
     @PreUpdate

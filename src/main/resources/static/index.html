@@ -414,8 +414,6 @@
                                 <option value="">全部类型</option>
                                 <option value="COMMENT">评论</option>
                                 <option value="IMAGE">图片</option>
-                                <option value="VIDEO">视频</option>
-                                <option value="AUDIO">音频</option>
                             </select>
                             <select class="select" id="reviewFilterSource" title="来源子系统">
                                 <option value="">全部来源</option>
@@ -993,8 +991,6 @@
     function contentTypeToZh(t) {
         if (t === "COMMENT") return "评论";
         if (t === "IMAGE") return "图片";
-        if (t === "VIDEO") return "视频";
-        if (t === "AUDIO") return "音频";
         return t;
     }
     function operationTypeToZh(t) {
@@ -3133,15 +3129,21 @@
             const path = p.toString() ? `/api/admin/reviews?${p}` : "/api/admin/reviews";
             const data = await api(path);
             document.getElementById("reviewTable").innerHTML =
-                "<tr><th><input type=\"checkbox\" onchange=\"toggleAllReviews(this.checked)\"></th><th>ID</th><th>数据表</th><th>类型</th><th>来源</th><th>提交人</th><th>文本</th><th>风险分</th><th>状态</th><th>自动审核</th><th>提交时间</th><th>拒绝/复审原因</th><th>审核人</th><th>操作</th></tr>" +
+                "<tr><th><input type=\"checkbox\" onchange=\"toggleAllReviews(this.checked)\"></th><th>ID</th><th>数据表</th><th>类型</th><th>来源</th><th>提交人</th><th>内容/图片</th><th>风险分</th><th>状态</th><th>自动审核</th><th>提交时间</th><th>拒绝/复审原因</th><th>审核人</th><th>操作</th></tr>" +
                 data.map(x => {
                     const st = x.sourceTable || "";
                     const ops = (x.reviewStatus === "PENDING" || x.reviewStatus === "RECHECK")
                         ? `<button class="btn btn-success" onclick="reviewAction('${st}', ${x.id}, 'APPROVED')">通过</button> <button class="btn btn-light" onclick="reviewAction('${st}', ${x.id}, 'RECHECK')">复审</button> <button class="btn btn-danger" onclick="reviewAction('${st}', ${x.id}, 'REJECTED')">拒绝</button>`
                         : `<button class="btn btn-light" onclick="reviewAction('${st}', ${x.id}, 'RECHECK')">标记复审</button>`;
                     const auto = x.autoReviewed ? (x.autoDecisionNote || "已自动审核") : "人工";
-                    const text = x.contentText || x.contentUrl || "";
-                    return `<tr><td><input type="checkbox" class="review-pick" data-source-table="${st}" data-id="${x.id}"></td><td>${x.id}</td><td><span class="badge">${sourceTableToZh(st)}</span></td><td><span class="badge">${contentTypeToZh(x.contentType)}</span></td><td>${x.sourceSystem || ""}</td><td>${x.submitter || ""}</td><td>${text}</td><td>${x.riskScore ?? ""}</td><td><span class="badge">${reviewStatusToZh(x.reviewStatus)}</span></td><td>${auto}</td><td>${x.submitTime || ""}</td><td>${x.rejectReason || ""}</td><td>${x.reviewer || ""}</td><td>${ops}</td></tr>`;
+                    let contentCell = "";
+                    if (x.contentType === "IMAGE" && x.contentUrl) {
+                        const safeUrl = escapeHtml(x.contentUrl);
+                        contentCell = `<div style="max-width:180px"><img src="${safeUrl}" alt="审核图片" style="max-width:160px;max-height:120px;border-radius:6px;cursor:pointer;object-fit:cover;border:1px solid var(--line)" onclick="window.open('${safeUrl}','_blank')" onerror="this.outerHTML='<span style=color:var(--muted)>图片加载失败</span>'"></div>${x.contentText ? '<div style="margin-top:4px;font-size:12px;color:var(--muted)">' + escapeHtml(x.contentText) + '</div>' : ''}`;
+                    } else {
+                        contentCell = escapeHtml(x.contentText || x.contentUrl || "");
+                    }
+                    return `<tr><td><input type="checkbox" class="review-pick" data-source-table="${st}" data-id="${x.id}"></td><td>${x.id}</td><td><span class="badge">${sourceTableToZh(st)}</span></td><td><span class="badge">${contentTypeToZh(x.contentType)}</span></td><td>${x.sourceSystem || ""}</td><td>${x.submitter || ""}</td><td>${contentCell}</td><td>${x.riskScore ?? ""}</td><td><span class="badge">${reviewStatusToZh(x.reviewStatus)}</span></td><td>${auto}</td><td>${x.submitTime || ""}</td><td>${x.rejectReason || ""}</td><td>${x.reviewer || ""}</td><td>${ops}</td></tr>`;
                 }).join("");
             setMsg("reviewMsg", "加载成功", true);
         } catch (e) { setMsg("reviewMsg", e.message, false); }

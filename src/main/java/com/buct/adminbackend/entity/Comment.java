@@ -59,10 +59,10 @@ public class Comment {
     @Column(name = "delete_reason", length = 255)
     private String deleteReason;
 
-    @Column(name = "created_at", nullable = false)
+    @Column(name = "created_at")
     private LocalDateTime createdAt = LocalDateTime.now();
 
-    @Column(name = "updated_at", nullable = false)
+    @Column(name = "updated_at")
     private LocalDateTime updatedAt = LocalDateTime.now();
 
     @JsonProperty("sourceSystem")

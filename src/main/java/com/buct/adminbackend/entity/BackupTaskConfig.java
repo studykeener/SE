@@ -27,7 +27,7 @@ public class BackupTaskConfig {
     @Column(name = "last_auto_run")
     private LocalDateTime lastAutoRun;
 
-    @Column(name = "updated_at", nullable = false)
+    @Column(name = "updated_at")
     private LocalDateTime updatedAt = LocalDateTime.now();
 
     @PreUpdate

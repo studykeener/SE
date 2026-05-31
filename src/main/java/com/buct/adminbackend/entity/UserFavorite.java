@@ -26,6 +26,6 @@ public class UserFavorite {
     @Column(name = "object_id", nullable = false, length = 255)
     private String objectId;
 
-    @Column(name = "created_at", nullable = false)
+    @Column(name = "created_at")
     private LocalDateTime createdAt = LocalDateTime.now();
 }

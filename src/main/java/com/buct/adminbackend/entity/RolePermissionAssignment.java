@@ -24,6 +24,6 @@ public class RolePermissionAssignment {
     @Column(name = "permission_id", nullable = false)
     private Long permissionId;
 
-    @Column(name = "created_at", nullable = false)
+    @Column(name = "created_at")
     private LocalDateTime createdAt = LocalDateTime.now();
 }
