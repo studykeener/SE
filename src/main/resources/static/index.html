@@ -559,14 +559,41 @@
                         </div>
                         <div class="toolbar">
                             <button class="btn btn-light" onclick="loadArtifacts()">刷新列表</button>
-                            <button class="btn btn-light" onclick="exportArtifacts()">导出CSV</button>
+                            <button class="btn btn-light" onclick="exportArtifacts()">导出 CSV</button>
+                            <button class="btn btn-light" onclick="exportArtifactsJson()">导出 JSON</button>
                         </div>
-                        <p class="muted" style="margin:0 0 6px; font-size:12px;">CSV 导入：与导出列一致时自动识别 <code>id</code> 列；也支持 7 列无 id 的简化格式。</p>
-                        <div class="toolbar" style="margin-bottom:8px;">
-                            <label class="file-label">选择 CSV 文件
-                                <input type="file" id="artifactImportFile" accept=".csv" onchange="setMsg('artifactMsg','已选择: ' + (this.files[0] && this.files[0].name), true)">
+                        <p class="muted" style="margin:0 0 6px; font-size:12px;">批量导入：支持 CSV（如 <code>sample_artifacts.csv</code>）与 JSON；导出格式与导入兼容。</p>
+                        <div class="toolbar" style="margin-bottom:8px; flex-wrap:wrap;">
+                            <label class="file-label">选择 CSV
+                                <input type="file" id="artifactImportFile" accept=".csv" onchange="setMsg('artifactMsg','已选择 CSV: ' + (this.files[0] && this.files[0].name), true)">
                             </label>
-                            <button class="btn btn-primary" onclick="uploadArtifactCsv()">上传导入</button>
+                            <button class="btn btn-primary" onclick="uploadArtifactCsv()">CSV 导入</button>
+                            <label class="file-label" style="margin-left:8px;">选择 JSON
+                                <input type="file" id="artifactImportJsonFile" accept=".json" onchange="setMsg('artifactMsg','已选择 JSON: ' + (this.files[0] && this.files[0].name), true)">
+                            </label>
+                            <button class="btn btn-primary" onclick="uploadArtifactJson()">JSON 导入</button>
+                        </div>
+                        <div class="panel" style="margin-top:10px; padding:10px; background:#eff6ff; border:1px solid #93c5fd; border-radius:8px;">
+                            <h4 style="margin:0 0 8px; font-size:14px;">批量上传 / 替换图片</h4>
+                            <p class="muted" style="font-size:12px; margin:0 0 8px;">按文件名匹配文物编号（如 <code>mus_0001.jpg</code>），或上传映射 CSV（列：museumId,objectId,filename）。</p>
+                            <div class="inline" style="flex-wrap:wrap; gap:6px;">
+                                <label class="file-label">选择图片（可多选）
+                                    <input type="file" id="artifactBatchImages" accept="image/*" multiple onchange="setMsg('artifactMsg','已选 ' + (this.files.length || 0) + ' 张图片', true)">
+                                </label>
+                                <label class="file-label">映射 CSV（可选）
+                                    <input type="file" id="artifactImageMappingCsv" accept=".csv">
+                                </label>
+                                <select class="select" id="batchImageMuseumId" title="默认馆别">
+                                    <option value="1">默认馆别：史密森尼</option>
+                                    <option value="2">哈佛</option>
+                                    <option value="3">波士顿美术博物馆</option>
+                                </select>
+                                <label class="muted" style="font-size:12px; display:inline-flex; align-items:center; gap:4px;">
+                                    <input type="checkbox" id="batchImageReplaceOnly"> 仅替换已有图片
+                                </label>
+                                <button type="button" class="btn btn-primary" onclick="uploadArtifactImagesBatch()">开始批量上传</button>
+                            </div>
+                            <pre id="batchImageResult" class="muted" style="font-size:12px; margin:8px 0 0; white-space:pre-wrap; max-height:120px; overflow:auto;"></pre>
                         </div>
                         <div class="panel" style="margin-top:10px; padding:10px; background:#f0fdf4; border:1px solid #86efac; border-radius:8px;">
                             <h4 style="margin:0 0 8px; font-size:14px;">新增文物</h4>
@@ -2164,15 +2191,16 @@
             artifactRows = data;
             const canDelete = hasPerm("ARTIFACT_DELETE");
             document.getElementById("artifactTable").innerHTML =
-                "<tr><th>文物编号</th><th>名称</th><th>年代</th><th>类型</th><th>材质</th><th>来源</th><th>图谱同步</th><th>操作</th></tr>" +
+                "<tr><th>缩略图</th><th>文物编号</th><th>名称</th><th>年代</th><th>类型</th><th>材质</th><th>来源</th><th>图谱同步</th><th>操作</th></tr>" +
                 (data.length ? data.map((x, i) => {
                     const num = artifactDisplayId(x);
                     const name = escapeHtml(x.name || x.title || "");
+                    const img = x.imageUrl ? `<img src="${escapeHtml(x.imageUrl)}" alt="" style="width:48px;height:48px;object-fit:cover;border-radius:4px;border:1px solid var(--line);">` : "<span class=\"muted\">—</span>";
                     const delBtn = canDelete
                         ? ` <button type="button" class="btn btn-danger" onclick="deleteArtifact(${i})">删除</button>`
                         : "";
-                    return `<tr><td>${escapeHtml(num)}</td><td>${name}</td><td>${escapeHtml(x.period || "")}</td><td>${escapeHtml(x.type || "")}</td><td>${escapeHtml(x.material || "")}</td><td>${escapeHtml(artifactSourceLabel(x.sourceSystem))}</td><td>${escapeHtml(kgSyncStatusToZh(x.kgSyncStatus))}</td><td><button type="button" class="btn btn-light" onclick="openEditArtifact(${i})">编辑</button>${delBtn}</td></tr>`;
-                }).join("") : "<tr><td colspan=\"8\" class=\"muted\">暂无数据</td></tr>");
+                    return `<tr><td>${img}</td><td>${escapeHtml(num)}</td><td>${name}</td><td>${escapeHtml(x.period || "")}</td><td>${escapeHtml(x.type || "")}</td><td>${escapeHtml(x.material || "")}</td><td>${escapeHtml(artifactSourceLabel(x.sourceSystem))}</td><td>${escapeHtml(kgSyncStatusToZh(x.kgSyncStatus))}</td><td><button type="button" class="btn btn-light" onclick="openEditArtifact(${i})">编辑</button>${delBtn}</td></tr>`;
+                }).join("") : "<tr><td colspan=\"9\" class=\"muted\">暂无数据</td></tr>");
             setMsg("artifactMsg", "共 " + data.length + " 条", true);
         } catch (e) { setMsg("artifactMsg", e.message, false); }
     }
@@ -2318,11 +2346,86 @@
             const resp = await fetch("/api/admin/artifacts/import", { method: "POST", body: form, headers: { "Authorization": "Bearer " + jwtToken } });
             const result = await resp.json();
             if (!resp.ok || !result.success) throw new Error(result.message || "导入失败");
-            setMsg("artifactMsg", "已导入 " + result.data + " 条", true);
+            setMsg("artifactMsg", "CSV 已导入 " + result.data + " 条", true);
             el.value = "";
             await loadArtifacts();
         } catch (e) {
             setMsg("artifactMsg", e.message, false);
+        }
+    }
+
+    async function exportArtifactsJson() {
+        try {
+            const resp = await fetch("/api/admin/artifacts/export/json", { headers: { "Authorization": "Bearer " + jwtToken } });
+            if (!resp.ok) throw new Error("JSON 导出失败");
+            const blob = await resp.blob();
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = "artifacts.json";
+            a.click();
+            URL.revokeObjectURL(a.href);
+            setMsg("artifactMsg", "JSON 已开始下载", true);
+        } catch (e) {
+            setMsg("artifactMsg", e.message, false);
+        }
+    }
+
+    async function uploadArtifactJson() {
+        const el = document.getElementById("artifactImportJsonFile");
+        const file = el.files[0];
+        if (!file) { setMsg("artifactMsg", "请先选择 .json 文件", false); return; }
+        const form = new FormData();
+        form.append("file", file);
+        try {
+            const resp = await fetch("/api/admin/artifacts/import/json", { method: "POST", body: form, headers: { "Authorization": "Bearer " + jwtToken } });
+            const result = await resp.json();
+            if (!resp.ok || !result.success) throw new Error(result.message || "JSON 导入失败");
+            setMsg("artifactMsg", "JSON 已导入 " + result.data + " 条", true);
+            el.value = "";
+            await loadArtifacts();
+        } catch (e) {
+            setMsg("artifactMsg", e.message, false);
+        }
+    }
+
+    async function uploadArtifactImagesBatch() {
+        const filesEl = document.getElementById("artifactBatchImages");
+        const mapEl = document.getElementById("artifactImageMappingCsv");
+        const resultEl = document.getElementById("batchImageResult");
+        const files = filesEl?.files;
+        if (!files || !files.length) {
+            setMsg("artifactMsg", "请先选择至少一张图片", false);
+            return;
+        }
+        const form = new FormData();
+        for (const f of files) form.append("files", f);
+        const museumId = document.getElementById("batchImageMuseumId")?.value;
+        if (museumId) form.append("museumId", museumId);
+        if (document.getElementById("batchImageReplaceOnly")?.checked) {
+            form.append("replaceOnly", "true");
+        }
+        if (mapEl?.files?.[0]) form.append("mappingCsv", mapEl.files[0]);
+        try {
+            const resp = await fetch("/api/admin/artifacts/images/batch", {
+                method: "POST",
+                body: form,
+                headers: { "Authorization": "Bearer " + jwtToken }
+            });
+            const result = await resp.json();
+            if (!resp.ok || !result.success) throw new Error(result.message || "批量上传失败");
+            const d = result.data || {};
+            const summary = `上传 ${d.uploaded || 0} 张，替换 ${d.replaced || 0} 张，跳过 ${d.skipped || 0} 张`;
+            setMsg("artifactMsg", summary, true);
+            if (resultEl) {
+                const details = (d.details || []).join("\n");
+                resultEl.textContent = summary + (details ? "\n" + details : "");
+            }
+            filesEl.value = "";
+            if (mapEl) mapEl.value = "";
+            await loadArtifacts();
+        } catch (e) {
+            setMsg("artifactMsg", e.message, false);
+            if (resultEl) resultEl.textContent = "";
         }
     }
 

@@ -2,6 +2,8 @@ package com.buct.adminbackend.service;
 
 import com.buct.adminbackend.entity.Artifact;
 import com.buct.adminbackend.repository.ArtifactRepository;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -19,6 +21,7 @@ import java.util.UUID;
 public class ArtifactImportService {
 
     private final ArtifactRepository artifactRepository;
+    private final ObjectMapper objectMapper;
 
     public int importFromCsvString(String csvContent) {
         if (csvContent.startsWith("\uFEFF")) {
@@ -61,6 +64,37 @@ public class ArtifactImportService {
         return importFromCsvString(content);
     }
 
+    public int importFromJsonFile(MultipartFile file) throws IOException {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("请选择要上传的 JSON 文件");
+        }
+        String name = file.getOriginalFilename() == null ? "" : file.getOriginalFilename();
+        if (!name.toLowerCase().endsWith(".json")) {
+            throw new IllegalArgumentException("只支持 .json 文件");
+        }
+        List<Artifact> items = objectMapper.readValue(file.getBytes(), new TypeReference<>() {
+        });
+        if (items == null || items.isEmpty()) {
+            return 0;
+        }
+        int count = 0;
+        for (Artifact item : items) {
+            if (item == null || !StringUtils.hasText(item.getTitle())) {
+                continue;
+            }
+            if (item.getMuseumId() == null) {
+                item.setMuseumId(1);
+            }
+            if (!StringUtils.hasText(item.getObjectId())) {
+                item.setObjectId("IMPORT_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12));
+            }
+            fillRequiredDefaults(item);
+            artifactRepository.save(item);
+            count++;
+        }
+        return count;
+    }
+
     private static Artifact buildArtifactFromCsv(String[] parts) {
         Artifact a = new Artifact();
         if (isNewExportFormatRow(parts)) {
@@ -78,6 +112,14 @@ public class ArtifactImportService {
             a.setDescription(value(parts, 7, a.getTitle()));
             a.setImageUrl(value(parts, 8, ""));
             a.setDetailUrl(value(parts, 9, a.getImageUrl()));
+        } else if (isSampleArtifactsRow(parts)) {
+            a.setTitle(value(parts, 1, "未命名"));
+            a.setPeriod(value(parts, 2, "未知"));
+            a.setType(value(parts, 3, "未知"));
+            a.setMaterial(nullIfBlank(value(parts, 4, null)));
+            a.setMuseumId(resolveMuseumFromSource(value(parts, 5, "museum")));
+            a.setObjectId(resolveObjectId(value(parts, 6, null), a.getTitle()));
+            applyKgFromSample(value(parts, 7, null), a);
         } else if (isLegacyExportFormatRow(parts)) {
             a.setTitle(value(parts, 1, "未命名"));
             a.setPeriod(value(parts, 2, "未知"));
@@ -146,6 +188,32 @@ public class ArtifactImportService {
 
     private static boolean isLegacyExportFormatRow(String[] parts) {
         return parts.length >= 8 && parts[0].trim().matches("\\d+");
+    }
+
+    private static boolean isSampleArtifactsRow(String[] parts) {
+        if (parts.length < 7) {
+            return false;
+        }
+        String col5 = value(parts, 5, "").toLowerCase();
+        return col5.equals("museum") || col5.equals("archive") || col5.equals("manual")
+                || col5.equals("smithsonian") || col5.equals("harvard") || col5.equals("mfa");
+    }
+
+    private static int resolveMuseumFromSource(String sourceSystem) {
+        if (!StringUtils.hasText(sourceSystem)) {
+            return 1;
+        }
+        return switch (sourceSystem.trim().toLowerCase()) {
+            case "harvard", "archive" -> 2;
+            case "mfa" -> 3;
+            default -> 1;
+        };
+    }
+
+    private static void applyKgFromSample(String kgStatus, Artifact a) {
+        if ("SYNCED".equalsIgnoreCase(kgStatus)) {
+            a.setArtistEnrichedAt(LocalDate.now().toString());
+        }
     }
 
     private static String value(String[] parts, int index, String defaultValue) {

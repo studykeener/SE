@@ -5,8 +5,11 @@ import com.buct.adminbackend.dto.ArtifactUpsertRequest;
 import com.buct.adminbackend.entity.Artifact;
 import com.buct.adminbackend.entity.ArtifactId;
 import com.buct.adminbackend.repository.ArtifactRepository;
+import com.buct.adminbackend.dto.BatchImageUploadResult;
+import com.buct.adminbackend.service.ArtifactImageBatchService;
 import com.buct.adminbackend.service.ArtifactImportService;
 import com.buct.adminbackend.service.AuditLogService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -39,6 +42,8 @@ public class ArtifactController {
     private final ArtifactRepository artifactRepository;
     private final AuditLogService auditLogService;
     private final ArtifactImportService artifactImportService;
+    private final ArtifactImageBatchService artifactImageBatchService;
+    private final ObjectMapper objectMapper;
 
     @GetMapping
     @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.ARTIFACT_VIEW + "')")
@@ -180,6 +185,39 @@ public class ArtifactController {
         int count = artifactImportService.importFromMultipartFile(file);
         auditLogService.logDataChange(auth.getName(), "IMPORT", "ARTIFACT", "-", "count=" + count);
         return ApiResponse.ok("导入成功", count);
+    }
+
+    @GetMapping("/export/json")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.ARTIFACT_IMPORT_EXPORT + "')")
+    public ResponseEntity<byte[]> exportJson() throws IOException {
+        List<Artifact> list = artifactRepository.findAll();
+        byte[] payload = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(list);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"artifacts.json\"")
+                .header(HttpHeaders.CONTENT_TYPE, "application/json; charset=UTF-8")
+                .body(payload);
+    }
+
+    @PostMapping(value = "/import/json", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.ARTIFACT_IMPORT_EXPORT + "')")
+    public ApiResponse<Integer> importJsonFile(@RequestParam("file") MultipartFile file, Authentication auth) throws IOException {
+        int count = artifactImportService.importFromJsonFile(file);
+        auditLogService.logDataChange(auth.getName(), "IMPORT", "ARTIFACT", "-", "jsonCount=" + count);
+        return ApiResponse.ok("JSON 导入成功", count);
+    }
+
+    @PostMapping(value = "/images/batch", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.ARTIFACT_EDIT + "')")
+    public ApiResponse<BatchImageUploadResult> batchUploadImages(
+            @RequestParam("files") MultipartFile[] files,
+            @RequestParam(value = "museumId", required = false) Integer museumId,
+            @RequestParam(value = "replaceOnly", defaultValue = "false") boolean replaceOnly,
+            @RequestParam(value = "mappingCsv", required = false) MultipartFile mappingCsv,
+            Authentication auth) throws IOException {
+        BatchImageUploadResult result = artifactImageBatchService.batchUpload(files, museumId, replaceOnly, mappingCsv);
+        auditLogService.logDataChange(auth.getName(), "BATCH_IMAGE", "ARTIFACT", "-",
+                "uploaded=" + result.getUploaded() + ",replaced=" + result.getReplaced());
+        return ApiResponse.ok("批量图片处理完成", result);
     }
 
     private Artifact findByArtifactId(String artifactId) {
