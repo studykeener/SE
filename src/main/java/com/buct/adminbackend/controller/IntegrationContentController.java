@@ -17,8 +17,14 @@ import java.util.Map;
 
 /**
  * 供队友业务系统调用的内容提交接口（评论 / 上传照片 / 登录上报）。
- * 走与子系统5后台相同的敏感词与自动审核策略，写入共用表 comment / user_upload_photo；
- * 登录上报写入 login_logs，供看板统计各子系统日登录人数。
+ * <p>
+ * 功能：
+ * 1. POST /api/integration/comments — 提交评论，触发敏感词检测 + 自动审核策略
+ * 2. POST /api/integration/photos — 提交照片，触发NSFW模型审核 + 进入人工队列
+ * 3. POST /api/integration/logins — 登录上报，供看板统计
+ * <p>
+ * 注意：此接口无需登录验证，由队友子系统直接调用。
+ * 走与后台管理相同的敏感词与自动审核策略，写入共用表 comment / user_upload_photo。
  */
 @RestController
 @RequestMapping("/api/integration")
@@ -36,17 +42,30 @@ public class IntegrationContentController {
         return ApiResponse.ok(data);
     }
 
+    /** 提交评论：触发敏感词检测和自动审核策略，返回审核结果 */
     @PostMapping("/comments")
     public ApiResponse<SubmitContentResponse> submitComment(@Valid @RequestBody SubmitCommentRequest request) {
-        var item = reviewQueueService.submitComment(
-                request.userId(),
-                request.museumId(),
-                request.objectId(),
-                request.content(),
-                request.source());
-        return ApiResponse.ok(toResponse(item));
+        try {
+            var item = reviewQueueService.submitComment(
+                    request.userId(),
+                    request.museumId(),
+                    request.objectId(),
+                    request.content(),
+                    request.source());
+            return ApiResponse.ok(toResponse(item));
+        } catch (IllegalArgumentException ex) {
+            // 高风险评论被自动拒绝时，返回统一格式的拒绝响应
+            if (ex.getMessage() != null && ex.getMessage().contains("内容违规")) {
+                SubmitContentResponse rejected = new SubmitContentResponse(
+                        null, "comment", ReviewStatus.REJECTED, 100, null,
+                        false, false, ex.getMessage());
+                return ApiResponse.ok(rejected);
+            }
+            throw ex;
+        }
     }
 
+    /** 提交照片：触发NSFW模型审核，全部进入人工审核队列 */
     @PostMapping("/photos")
     public ApiResponse<SubmitContentResponse> submitPhoto(@Valid @RequestBody SubmitPhotoRequest request) {
         var item = reviewQueueService.submitPhoto(
