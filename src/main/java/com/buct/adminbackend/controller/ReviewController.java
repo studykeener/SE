@@ -39,6 +39,17 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * 内容审核管理控制器。
+ * <p>
+ * 提供以下功能的 REST API：
+ * 1. 待审队列查询：GET /api/admin/reviews（支持状态/类型/来源/时间/风险分等筛选）
+ * 2. 审核操作：PATCH /{sourceTable}/{id}/action（通过/拒绝/复审）
+ * 3. 批量审核：PATCH /batch/action
+ * 4. 敏感词管理：CRUD /sensitive-words
+ * 5. 审核策略配置：GET/PUT /strategy
+ * 6. 审核统计：GET /stats（每日审核量/通过率/工作量）
+ */
 @RestController
 @RequestMapping("/api/admin/reviews")
 @RequiredArgsConstructor
@@ -52,6 +63,7 @@ public class ReviewController {
     private final OperationLogRepository operationLogRepository;
     private final OperationLogService operationLogService;
 
+    /** 查询待审队列，支持多条件筛选，合并评论+照片两张表的数据 */
     @GetMapping
     @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.REVIEW_VIEW + "')")
     public ApiResponse<List<ReviewQueueItemResponse>> list(
@@ -83,6 +95,7 @@ public class ReviewController {
         return ApiResponse.ok(reviewQueueService.getBySource(sourceTable, id));
     }
 
+    /** 后台测试入口：手动新增审核内容，触发自动审核流程 */
     @PostMapping
     @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.REVIEW_ACTION + "')")
     public ApiResponse<ReviewQueueItemResponse> create(@Valid @RequestBody CreateReviewContentRequest request,
@@ -94,6 +107,7 @@ public class ReviewController {
         return ApiResponse.ok("新增成功", saved);
     }
 
+    /** 人工审核：单条通过/拒绝/复审，拒绝时必填原因 */
     @PatchMapping("/{sourceTable}/{id}/action")
     @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.REVIEW_ACTION + "')")
     public ApiResponse<ReviewQueueItemResponse> review(@PathVariable String sourceTable,
@@ -109,6 +123,7 @@ public class ReviewController {
         return ApiResponse.ok("审核成功", saved);
     }
 
+    /** 批量审核：对多条内容执行相同审核动作 */
     @PatchMapping("/batch/action")
     @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.REVIEW_ACTION + "')")
     public ApiResponse<Void> batchReview(@Valid @RequestBody BatchReviewRequest request,
@@ -145,6 +160,7 @@ public class ReviewController {
         return details.length() <= 1000 ? details : details.substring(0, 997) + "...";
     }
 
+    /** 敏感词列表查询，支持按关键词和级别筛选 */
     @GetMapping("/sensitive-words")
     @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.REVIEW_VIEW + "')")
     public ApiResponse<List<SensitiveWord>> listSensitiveWords(
@@ -171,6 +187,7 @@ public class ReviewController {
                 sensitiveWordRepository.findAll(spec, Sort.by(Sort.Direction.ASC, "word")));
     }
 
+    /** 新增敏感词，支持指定级别(LIGHT/SEVERE)，默认LIGHT */
     @PostMapping("/sensitive-words")
     @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.REVIEW_ACTION + "')")
     public ApiResponse<SensitiveWord> createSensitiveWord(
@@ -242,12 +259,14 @@ public class ReviewController {
         return ApiResponse.ok(logs);
     }
 
+    /** 获取自动审核策略配置（不存在则初始化默认值） */
     @GetMapping("/strategy")
     @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.REVIEW_VIEW + "')")
     public ApiResponse<ReviewStrategyConfig> getStrategy() {
         return ApiResponse.ok(getOrCreateStrategy());
     }
 
+    /** 更新自动审核策略（修改风险阈值和各档动作） */
     @PutMapping("/strategy")
     @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.REVIEW_ACTION + "')")
     public ApiResponse<ReviewStrategyConfig> updateStrategy(@RequestBody ReviewStrategyConfig request,
@@ -270,6 +289,7 @@ public class ReviewController {
         return ApiResponse.ok("保存成功", saved);
     }
 
+    /** 审核统计：每日审核量、通过/拒绝率、审核员工作量 */
     @GetMapping("/stats")
     @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.REVIEW_VIEW + "')")
     public ApiResponse<Map<String, Object>> stats(

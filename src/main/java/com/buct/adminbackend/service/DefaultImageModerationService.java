@@ -20,6 +20,16 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+/**
+ * 图片审核服务默认实现（三模式三级降级）。
+ * <p>
+ * 根据配置选择审核模式：
+ * - real：调用阿里云 Green 图片审核 API，失败时自动降级为 local
+ * - local：使用本地 NSFW ONNX 模型推理，模型未加载时降级为 mock
+ * - mock（默认）：基于关键词进行模拟打分，无需外部依赖
+ * <p>
+ * 降级链路： real → local → mock，保证任何情况下都能返回风险分。
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -29,6 +39,10 @@ public class DefaultImageModerationService implements ImageModerationService {
     private final ObjectMapper objectMapper;
     private final LocalNsfwModelService localNsfwModelService;
 
+    /**
+     * 图片审核主入口，返回 0~100 的风险分。
+     * 根据配置的 mode 分派到不同实现，失败时自动降级。
+     */
     @Override
     public int scoreImage(String contentUrl, String contentText) {
         if (!StringUtils.hasText(contentUrl) && !StringUtils.hasText(contentText)) {
@@ -50,6 +64,11 @@ public class DefaultImageModerationService implements ImageModerationService {
         }
     }
 
+    /**
+     * 本地 NSFW 模型审核。
+     * 下载图片 → 预处理(224x224) → ONNX推理 → NSFW概率*100 = 风险分。
+     * 模型未加载或推理失败时降级为 mock 打分。
+     */
     private int scoreByLocalModel(String contentUrl, String contentText) {
         if (!localNsfwModelService.isModelLoaded()) {
             log.warn("本地 NSFW 模型未加载，降级为本地模拟打分");
@@ -69,6 +88,10 @@ public class DefaultImageModerationService implements ImageModerationService {
         }
     }
 
+    /**
+     * 阿里云 Green 图片审核。
+     * 需要配置 AccessKey，未配置时抛异常触发降级。
+     */
     private int scoreByAliyun(String contentUrl) {
         if (!"aliyun".equalsIgnoreCase(properties.getProvider())) {
             throw new IllegalStateException("当前仅支持 image-moderation.provider=aliyun");
@@ -161,6 +184,12 @@ public class DefaultImageModerationService implements ImageModerationService {
         return normalize((int) Math.round(raw));
     }
 
+    /**
+     * Mock 模拟打分（基于关键词）。
+     * 高危关键词(porn/terror/涉黄等) → 85分
+     * 中危关键词(knife/weapon/擦边等) → 45分
+     * 无命中 → 10分（安全基线）
+     */
     private int scoreByMock(String contentUrl, String contentText) {
         String text = ((contentText == null ? "" : contentText) + " " + (contentUrl == null ? "" : contentUrl)).toLowerCase();
         Set<String> highRisk = Set.of("porn", "terror", "blood", "violence", "涉黄", "暴恐", "极端");

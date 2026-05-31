@@ -21,11 +21,25 @@ import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+/**
+ * 内容审核队列核心服务。
+ * <p>
+ * 职责：
+ * 1. 接收内容提交（评论/照片），计算风险分，执行自动审核策略
+ * 2. 提供人工审核操作（通过/拒绝/复审）
+ * 3. 待审队列查询（支持多条件筛选）
+ * 4. 审核统计数据
+ * <p>
+ * 待审队列不使用独立表，直接读写共用表 comment 和 user_upload_photo。
+ * 图片审核已调整为全人工审核通道，评论仍按策略自动审核。
+ */
 @Service
 @RequiredArgsConstructor
 public class ReviewQueueService {
 
+    /** 评论来源表标识 */
     public static final String TABLE_COMMENT = "comment";
+    /** 照片来源表标识 */
     public static final String TABLE_PHOTO = "user_upload_photo";
 
     private final CommentRepository commentRepository;
@@ -34,8 +48,13 @@ public class ReviewQueueService {
     private final AdminUserRepository adminUserRepository;
     private final SensitiveWordRepository sensitiveWordRepository;
     private final ReviewStrategyConfigRepository reviewStrategyConfigRepository;
+    /** 图片审核服务（三级降级：阿里云→本地ONNX模型→关键词模拟） */
     private final ImageModerationService imageModerationService;
 
+    /**
+     * 查询待审队列，合并 comment + user_upload_photo 两张表，支持多条件筛选。
+     * 筛选条件：审核状态、内容类型、来源系统、提交者、关键词、时间范围、风险分范围。
+     */
     public List<ReviewQueueItemResponse> list(
             ReviewStatus status,
             ContentType contentType,
@@ -72,7 +91,11 @@ public class ReviewQueueService {
         throw new IllegalArgumentException("当前仅支持评论(comment)与上传照片(user_upload_photo)的审核，视频/音频待队友接入后再管理");
     }
 
-    /** 队友系统提交评论（集成 API 入口） */
+    /**
+     * 队友系统提交评论（集成 API 入口）。
+     * 流程：校验用户→计算风险分→应用自动审核策略→保存。
+     * 若高风险且策略为AUTO_REJECT，直接抛异常拦截发布。
+     */
     @Transactional
     public ReviewQueueItemResponse submitComment(Long userId, Integer museumId, String objectId, String content, String source) {
         if (!userRepository.existsById(userId)) {
@@ -91,7 +114,11 @@ public class ReviewQueueService {
         return createTestComment(request);
     }
 
-    /** 队友系统提交照片（集成 API 入口） */
+    /**
+     * 队友系统提交照片（集成 API 入口）。
+     * 流程：校验用户→计算风险分（含NSFW模型）→全部进入人工审核队列。
+     * 注意：图片审核已改为全人工通道，风险分仅供审核员参考。
+     */
     @Transactional
     public ReviewQueueItemResponse submitPhoto(Long userId, String photoUrl, String description,
                                                Integer museumId, String objectId, String source) {
@@ -238,21 +265,32 @@ public class ReviewQueueService {
         return toPhotoItem(userUploadPhotoRepository.save(photo));
     }
 
+    /**
+     * 对评论应用自动审核策略。
+     * 根据风险分与策略阈值决定：
+     * - 低风险(≤20分) → AUTO_APPROVE（自动通过，auditMethod=3）
+     * - 中风险(21~60分) → MANUAL_REVIEW（转人工，状态PENDING）
+     * - 高风险(>60分) → AUTO_REJECT（自动拒绝）
+     */
     private void applyAutoReviewToComment(Comment comment, int riskScore) {
         ReviewStrategyConfig cfg = getOrCreateStrategy();
-        comment.setAuditMethod((byte) 1);
+        comment.setAuditMethod((byte) 1); // 1 = 自动审核
         ReviewStatus result = resolveAutoStatus(riskScore, cfg);
         comment.setAuditStatus(result);
         if (result == ReviewStatus.REJECTED) {
             comment.setDeleteReason("自动审核拦截");
         }
         if (result == ReviewStatus.APPROVED) {
-            comment.setAuditMethod((byte) 3);
+            comment.setAuditMethod((byte) 3); // 3 = 自动通过
         }
     }
 
+    /**
+     * 对照片应用审核策略 —— 全部走人工审核通道。
+     * 不论风险分高低，图片一律进入人工审核队列（status=PENDING）。
+     * 风险分保存在 auto_audit_score 字段供审核员参考。
+     */
     private void applyAutoReviewToPhoto(UserUploadPhoto photo, int riskScore) {
-        // 图片审核全部走人工审核通道，不做自动通过/拒绝
         photo.setAuditMethod((byte) 2); // 2 = 人工审核
         photo.setStatus(ReviewStatus.PENDING);
     }
@@ -458,6 +496,23 @@ public class ReviewQueueService {
         return "app".equals(s) ? "app" : "web";
     }
 
+    /**
+     * 计算内容风险分（核心算法）。
+     * <p>
+     * 算法流程：
+     * 1. 遍历启用的敏感词库，匹配文本中的敏感词
+     *    - 命中 SEVERE 级别 → 直接返回 100 分
+     *    - 命中 LIGHT 级别 → 每次 +10 分
+     * 2. 若为图片内容，调用 ImageModerationService 获取图片风险分，取最大值
+     * 3. 检查高危关键词（childporn/terror/恋童等）→ 100分
+     * 4. 检查中危关键词（porn/violence/涉黄等）→ +10分
+     * 5. 最终分数范围 0~100
+     *
+     * @param text  文本内容
+     * @param url   图片URL（仅图片类型有值）
+     * @param image 是否为图片类型
+     * @return RiskResult(score, hitWords)
+     */
     private RiskResult computeRisk(String text, String url, boolean image) {
         List<SensitiveWord> words = sensitiveWordRepository.findByEnabledTrueOrderByWordAsc();
         String allText = ((text == null ? "" : text) + " " + (url == null ? "" : url)).toLowerCase();
