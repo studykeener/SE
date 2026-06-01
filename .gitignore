@@ -19,3 +19,6 @@ Thumbs.db
 
 # Debug output files
 *-output*.txt
+
+# Local artifact image uploads
+uploads/

@@ -1,5 +1,5 @@
-id,name,period,type,material,sourceSystem,sourceId,kgSyncStatus
-1,青铜鼎,商代,礼器,青铜,museum,mus_0001,SYNCED
-2,白瓷碗,宋代,日用器,瓷,archive,arc_1023,PENDING
-3,玉璧,战国,礼器,玉,manual,man_7788,FAILED
-4,鎏金佛像,唐代,造像,铜鎏金,museum,mus_0456,SYNCED
+id,name,period,type,material,sourceSystem,sourceId
+1,青铜鼎,商代,礼器,青铜,museum,mus_0001
+2,白瓷碗,宋代,日用器,瓷,archive,arc_1023
+3,玉璧,战国,礼器,玉,manual,man_7788
+4,鎏金佛像,唐代,造像,铜鎏金,museum,mus_0456

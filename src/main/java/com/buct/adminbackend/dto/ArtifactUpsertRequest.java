@@ -16,7 +16,6 @@ public record ArtifactUpsertRequest(
         String location,
         String detailUrl,
         @NotBlank String sourceSystem,
-        String sourceId,
-        String kgSyncStatus
+        String sourceId
 ) {
 }

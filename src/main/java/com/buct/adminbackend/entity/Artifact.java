@@ -116,6 +116,10 @@ public class Artifact {
     @Column(name = "crawl_date", nullable = false)
     private LocalDate crawlDate;
 
+    /** 列表缩略图展示用（哈佛/MFA 走爬虫组图片 API，不落库） */
+    @Transient
+    private String displayImageUrl;
+
     @JsonProperty("id")
     public String getApiId() {
         return artifactId;
@@ -167,11 +171,5 @@ public class Artifact {
             case 3 -> "mfa";
             default -> "museum-" + museumId;
         };
-    }
-
-    /** 前端兼容字段：根据作者信息是否补全 */
-    @JsonProperty("kgSyncStatus")
-    public String getKgSyncStatus() {
-        return artistEnrichedAt != null && !artistEnrichedAt.isBlank() ? "SYNCED" : "PENDING";
     }
 }

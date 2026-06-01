@@ -5,8 +5,12 @@ import com.buct.adminbackend.dto.ArtifactUpsertRequest;
 import com.buct.adminbackend.entity.Artifact;
 import com.buct.adminbackend.entity.ArtifactId;
 import com.buct.adminbackend.repository.ArtifactRepository;
+import com.buct.adminbackend.dto.BatchImageUploadResult;
+import com.buct.adminbackend.service.ArtifactImageBatchService;
+import com.buct.adminbackend.service.ArtifactImageUrlResolver;
 import com.buct.adminbackend.service.ArtifactImportService;
 import com.buct.adminbackend.service.AuditLogService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -39,6 +43,9 @@ public class ArtifactController {
     private final ArtifactRepository artifactRepository;
     private final AuditLogService auditLogService;
     private final ArtifactImportService artifactImportService;
+    private final ArtifactImageBatchService artifactImageBatchService;
+    private final ArtifactImageUrlResolver artifactImageUrlResolver;
+    private final ObjectMapper objectMapper;
 
     @GetMapping
     @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.ARTIFACT_VIEW + "')")
@@ -46,13 +53,13 @@ public class ArtifactController {
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String sourceSystem,
             @RequestParam(required = false) String period,
-            @RequestParam(required = false) String type,
-            @RequestParam(required = false) String kgSyncStatus) {
-        Specification<Artifact> spec = buildFilterSpec(keyword, sourceSystem, period, type, kgSyncStatus);
+            @RequestParam(required = false) String type) {
+        Specification<Artifact> spec = buildFilterSpec(keyword, sourceSystem, period, type);
         Sort sort = Sort.by(Sort.Direction.ASC, "title");
         List<Artifact> data = spec == null
                 ? artifactRepository.findAll(sort)
                 : artifactRepository.findAll(spec, sort);
+        data.forEach(artifactImageUrlResolver::enrichDisplayImageUrl);
         return ApiResponse.ok(data);
     }
 
@@ -60,6 +67,7 @@ public class ArtifactController {
     @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.ARTIFACT_VIEW + "')")
     public ApiResponse<Artifact> detail(@PathVariable String artifactId) {
         Artifact data = findByArtifactId(artifactId);
+        artifactImageUrlResolver.enrichDisplayImageUrl(data);
         return ApiResponse.ok(data);
     }
 
@@ -76,6 +84,7 @@ public class ArtifactController {
         Artifact data = new Artifact();
         apply(request, data, museumId, objectId, true);
         Artifact saved = artifactRepository.save(data);
+        artifactImageUrlResolver.enrichDisplayImageUrl(saved);
         auditLogService.logDataChange(auth.getName(), "CREATE", "ARTIFACT", saved.getArtifactId(), saved.getName());
         return ApiResponse.ok("创建成功", saved);
     }
@@ -101,12 +110,14 @@ public class ArtifactController {
             artifactRepository.delete(managed);
             artifactRepository.flush();
             Artifact saved = artifactRepository.save(replacement);
+            artifactImageUrlResolver.enrichDisplayImageUrl(saved);
             auditLogService.logDataChange(auth.getName(), "UPDATE", "ARTIFACT", saved.getArtifactId(), saved.getName());
             return ApiResponse.ok("更新成功", saved);
         }
 
         apply(request, managed, museumId, objectId, false);
         Artifact saved = artifactRepository.save(managed);
+        artifactImageUrlResolver.enrichDisplayImageUrl(saved);
         auditLogService.logDataChange(auth.getName(), "UPDATE", "ARTIFACT", saved.getArtifactId(), saved.getName());
         return ApiResponse.ok("更新成功", saved);
     }
@@ -125,7 +136,7 @@ public class ArtifactController {
     public ResponseEntity<byte[]> exportCsv() {
         StringBuilder sb = new StringBuilder();
         sb.append(csvRow("artifactId", "museumId", "objectId", "name", "period", "type", "material",
-                "description", "imageUrl", "detailUrl", "sourceSystem", "kgSyncStatus"));
+                "description", "imageUrl", "detailUrl", "sourceSystem"));
         for (Artifact a : artifactRepository.findAll()) {
             sb.append(csvRow(
                     a.getArtifactId(),
@@ -138,8 +149,7 @@ public class ArtifactController {
                     a.getDescription(),
                     a.getImageUrl(),
                     a.getDetailUrl(),
-                    a.getSourceSystem(),
-                    a.getKgSyncStatus()
+                    a.getSourceSystem()
             ));
         }
         return csvDownload("artifacts.csv", sb.toString());
@@ -182,6 +192,39 @@ public class ArtifactController {
         return ApiResponse.ok("导入成功", count);
     }
 
+    @GetMapping("/export/json")
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.ARTIFACT_IMPORT_EXPORT + "')")
+    public ResponseEntity<byte[]> exportJson() throws IOException {
+        List<Artifact> list = artifactRepository.findAll();
+        byte[] payload = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(list);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"artifacts.json\"")
+                .header(HttpHeaders.CONTENT_TYPE, "application/json; charset=UTF-8")
+                .body(payload);
+    }
+
+    @PostMapping(value = "/import/json", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.ARTIFACT_IMPORT_EXPORT + "')")
+    public ApiResponse<Integer> importJsonFile(@RequestParam("file") MultipartFile file, Authentication auth) throws IOException {
+        int count = artifactImportService.importFromJsonFile(file);
+        auditLogService.logDataChange(auth.getName(), "IMPORT", "ARTIFACT", "-", "jsonCount=" + count);
+        return ApiResponse.ok("JSON 导入成功", count);
+    }
+
+    @PostMapping(value = "/images/batch", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAuthority('" + PermissionCodes.AUTHORITY_PREFIX + PermissionCodes.ARTIFACT_EDIT + "')")
+    public ApiResponse<BatchImageUploadResult> batchUploadImages(
+            @RequestParam("files") MultipartFile[] files,
+            @RequestParam(value = "museumId", required = false) Integer museumId,
+            @RequestParam(value = "replaceOnly", defaultValue = "false") boolean replaceOnly,
+            @RequestParam(value = "mappingCsv", required = false) MultipartFile mappingCsv,
+            Authentication auth) throws IOException {
+        BatchImageUploadResult result = artifactImageBatchService.batchUpload(files, museumId, replaceOnly, mappingCsv);
+        auditLogService.logDataChange(auth.getName(), "BATCH_IMAGE", "ARTIFACT", "-",
+                "uploaded=" + result.getUploaded() + ",replaced=" + result.getReplaced());
+        return ApiResponse.ok("批量图片处理完成", result);
+    }
+
     private Artifact findByArtifactId(String artifactId) {
         String decoded = URLDecoder.decode(artifactId, StandardCharsets.UTF_8);
         return artifactRepository.findByArtifactId(decoded)
@@ -192,13 +235,11 @@ public class ArtifactController {
             String keyword,
             String sourceSystem,
             String period,
-            String type,
-            String kgSyncStatus) {
+            String type) {
         boolean hasFilter = StringUtils.hasText(keyword)
                 || StringUtils.hasText(sourceSystem)
                 || StringUtils.hasText(period)
-                || StringUtils.hasText(type)
-                || StringUtils.hasText(kgSyncStatus);
+                || StringUtils.hasText(type);
         if (!hasFilter) {
             return null;
         }
@@ -228,19 +269,6 @@ public class ArtifactController {
             if (StringUtils.hasText(type)) {
                 predicates.add(cb.like(cb.lower(root.get("type")),
                         "%" + type.trim().toLowerCase() + "%"));
-            }
-            if (StringUtils.hasText(kgSyncStatus)) {
-                if ("SYNCED".equalsIgnoreCase(kgSyncStatus.trim())) {
-                    predicates.add(cb.and(
-                            cb.isNotNull(root.get("artistEnrichedAt")),
-                            cb.notEqual(root.get("artistEnrichedAt"), "")
-                    ));
-                } else if ("PENDING".equalsIgnoreCase(kgSyncStatus.trim())) {
-                    predicates.add(cb.or(
-                            cb.isNull(root.get("artistEnrichedAt")),
-                            cb.equal(root.get("artistEnrichedAt"), "")
-                    ));
-                }
             }
             return cb.and(predicates.toArray(new Predicate[0]));
         };
@@ -301,20 +329,6 @@ public class ArtifactController {
             data.setCrawlDate(LocalDate.now());
         }
         data.setArtifactId("entity:artifact:" + museumId + ":" + objectId);
-        applyKgSyncStatus(req, data, creating);
-    }
-
-    private static void applyKgSyncStatus(ArtifactUpsertRequest req, Artifact data, boolean creating) {
-        if (!StringUtils.hasText(req.kgSyncStatus())) {
-            return;
-        }
-        if ("SYNCED".equalsIgnoreCase(req.kgSyncStatus())) {
-            if (creating || !StringUtils.hasText(data.getArtistEnrichedAt())) {
-                data.setArtistEnrichedAt(LocalDate.now().toString());
-            }
-        } else if ("PENDING".equalsIgnoreCase(req.kgSyncStatus())) {
-            data.setArtistEnrichedAt("");
-        }
     }
 
     private static Artifact cloneForRekey(Artifact from) {
