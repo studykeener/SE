@@ -119,7 +119,6 @@ public class ArtifactImportService {
             a.setMaterial(nullIfBlank(value(parts, 4, null)));
             a.setMuseumId(resolveMuseumFromSource(value(parts, 5, "museum")));
             a.setObjectId(resolveObjectId(value(parts, 6, null), a.getTitle()));
-            applyKgFromSample(value(parts, 7, null), a);
         } else if (isLegacyExportFormatRow(parts)) {
             a.setTitle(value(parts, 1, "未命名"));
             a.setPeriod(value(parts, 2, "未知"));
@@ -208,12 +207,6 @@ public class ArtifactImportService {
             case "mfa" -> 3;
             default -> 1;
         };
-    }
-
-    private static void applyKgFromSample(String kgStatus, Artifact a) {
-        if ("SYNCED".equalsIgnoreCase(kgStatus)) {
-            a.setArtistEnrichedAt(LocalDate.now().toString());
-        }
     }
 
     private static String value(String[] parts, int index, String defaultValue) {

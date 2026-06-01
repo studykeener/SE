@@ -7,9 +7,14 @@ spring:
       max-file-size: 20MB
       max-request-size: 25MB
   datasource:
-    url: jdbc:mysql://localhost:3306/overseas_artifacts?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
-    username: root
-    password: 123456
+    #本地测试下面这样
+    # url: jdbc:mysql://localhost:3306/overseas_artifacts?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    # username: root
+    # password: 123456
+    #连接公共数据库下面这样 不要随便用，最后再用！！
+    url: jdbc:mysql://47.96.152.190:3306/overseas_chinese_artifacts?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: root        
+    password: "!software2303"     
     driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
     hibernate:
@@ -36,13 +41,23 @@ integration:
 kg:
   neo4j:
     enabled: true
-    uri: bolt://localhost:7687
+    #本地测试下面这样 
+    # uri: bolt://localhost:7687
+    # username: neo4j
+    # password: password123   # 与 graph-db/docker-compose.yml 中 NEO4J_AUTH 一致
+    # 连接公共图数据库改为下面这样 不要随便用，最后再用！！
+    uri: bolt://47.96.152.190:7687
     username: neo4j
-    password: password123   # 与 graph-db/docker-compose.yml 中 NEO4J_AUTH 一致
+    password: "!software2303"   
 
 artifact:
   storage:
     upload-dir: uploads/artifacts
+  # 爬虫组图片 API（哈佛 museum_id=2、波士顿 MFA museum_id=3 缩略图）
+  image-api:
+    enabled: true
+    base-url: http://47.96.152.190:8000
+    proxy-museum-ids: 2,3
 
 backup:
   directory: backups

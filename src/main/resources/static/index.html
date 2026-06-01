@@ -92,7 +92,6 @@
     <div class="login-card">
         <h1 class="login-title">后台管理系统</h1>
         <p class="login-subtitle">海外藏中国文物知识管理与服务平台</p>
-        <p class="muted" style="font-size:13px; margin:0 0 8px;">默认超级管理员账号：<strong>admin</strong>　密码：<strong>123456</strong>（首次启动自动创建，勿删除该账号）</p>
         <input class="input" id="username" placeholder="管理员账号" value="admin" autocomplete="username">
         <input class="input" id="password" type="password" placeholder="密码" value="123456" autocomplete="current-password">
         <div class="btn-row">
@@ -549,11 +548,6 @@
                             </select>
                             <input class="input" id="filterArtifactPeriod" placeholder="年代" style="min-width:90px;">
                             <input class="input" id="filterArtifactType" placeholder="类型" style="min-width:90px;">
-                            <select class="select" id="filterArtifactKgStatus" title="图谱同步">
-                                <option value="">全部同步状态</option>
-                                <option value="PENDING">未同步</option>
-                                <option value="SYNCED">已同步</option>
-                            </select>
                             <button type="button" class="btn btn-primary" onclick="loadArtifacts()">查询</button>
                             <button type="button" class="btn btn-light" onclick="resetArtifactFilters()">重置</button>
                         </div>
@@ -615,10 +609,6 @@
                             </div>
                             <textarea class="modal-textarea" id="newArtifactDescription" rows="2" placeholder="文物介绍 *" style="margin-top:8px; min-height:56px;"></textarea>
                             <div class="inline" style="margin-top:8px; flex-wrap:wrap;">
-                                <select class="select" id="newArtifactKgStatus" title="知识图谱同步状态">
-                                    <option value="PENDING">图谱同步：未同步</option>
-                                    <option value="SYNCED">图谱同步：已同步</option>
-                                </select>
                                 <button type="button" class="btn btn-primary" onclick="createArtifact()">新增文物</button>
                                 <button type="button" class="btn btn-light" onclick="resetNewArtifactForm()">清空</button>
                             </div>
@@ -638,10 +628,6 @@
                             <input class="input" id="editArtifactMaterial" placeholder="材质" style="min-width:100px;">
                             <input class="input" id="editArtifactImageUrl" placeholder="图片链接 *" style="min-width:200px;">
                             <input class="input" id="editArtifactDetailUrl" placeholder="详情页链接" style="min-width:200px;">
-                            <select class="select" id="editArtifactKgStatus" title="知识图谱同步状态">
-                                <option value="PENDING">图谱同步：未同步</option>
-                                <option value="SYNCED">图谱同步：已同步</option>
-                            </select>
                             <textarea class="modal-textarea" id="editArtifactDescription" rows="2" placeholder="文物介绍 *" style="width:100%; min-height:56px; margin-top:4px;"></textarea>
                             <div class="inline" style="width:100%; margin-top:6px;">
                                 <button type="button" class="btn btn-primary" onclick="saveEditArtifact()">保存修改</button>
@@ -2159,18 +2145,17 @@
         return map[sourceSystem] || sourceSystem || "";
     }
 
-    function kgSyncStatusToZh(status) {
-        if (status === "SYNCED") return "已同步";
-        if (status === "PENDING") return "未同步";
-        return status || "";
-    }
-
     function artifactDisplayId(x) {
         const raw = x.objectId || "";
         if (raw.startsWith("MANUAL_")) {
             return raw.substring(7);
         }
         return raw || "—";
+    }
+
+    function artifactThumbSrc(x) {
+        if (x.displayImageUrl) return x.displayImageUrl;
+        return x.imageUrl || "";
     }
 
     async function loadArtifacts() {
@@ -2180,27 +2165,26 @@
             const sourceSystem = document.getElementById("filterArtifactSource")?.value.trim();
             const period = document.getElementById("filterArtifactPeriod")?.value.trim();
             const type = document.getElementById("filterArtifactType")?.value.trim();
-            const kgSyncStatus = document.getElementById("filterArtifactKgStatus")?.value.trim();
             if (keyword) sp.set("keyword", keyword);
             if (sourceSystem) sp.set("sourceSystem", sourceSystem);
             if (period) sp.set("period", period);
             if (type) sp.set("type", type);
-            if (kgSyncStatus) sp.set("kgSyncStatus", kgSyncStatus);
             const qs = sp.toString() ? "?" + sp.toString() : "";
             const data = await api("/api/admin/artifacts" + qs);
             artifactRows = data;
             const canDelete = hasPerm("ARTIFACT_DELETE");
             document.getElementById("artifactTable").innerHTML =
-                "<tr><th>缩略图</th><th>文物编号</th><th>名称</th><th>年代</th><th>类型</th><th>材质</th><th>来源</th><th>图谱同步</th><th>操作</th></tr>" +
+                "<tr><th>缩略图</th><th>文物编号</th><th>名称</th><th>年代</th><th>类型</th><th>材质</th><th>来源</th><th>操作</th></tr>" +
                 (data.length ? data.map((x, i) => {
                     const num = artifactDisplayId(x);
                     const name = escapeHtml(x.name || x.title || "");
-                    const img = x.imageUrl ? `<img src="${escapeHtml(x.imageUrl)}" alt="" style="width:48px;height:48px;object-fit:cover;border-radius:4px;border:1px solid var(--line);">` : "<span class=\"muted\">—</span>";
+                    const thumb = artifactThumbSrc(x);
+                    const img = thumb ? `<img src="${escapeHtml(thumb)}" alt="" style="width:48px;height:48px;object-fit:cover;border-radius:4px;border:1px solid var(--line);" onerror="this.outerHTML='<span class=\\'muted\\'>无图</span>'">` : "<span class=\"muted\">—</span>";
                     const delBtn = canDelete
                         ? ` <button type="button" class="btn btn-danger" onclick="deleteArtifact(${i})">删除</button>`
                         : "";
-                    return `<tr><td>${img}</td><td>${escapeHtml(num)}</td><td>${name}</td><td>${escapeHtml(x.period || "")}</td><td>${escapeHtml(x.type || "")}</td><td>${escapeHtml(x.material || "")}</td><td>${escapeHtml(artifactSourceLabel(x.sourceSystem))}</td><td>${escapeHtml(kgSyncStatusToZh(x.kgSyncStatus))}</td><td><button type="button" class="btn btn-light" onclick="openEditArtifact(${i})">编辑</button>${delBtn}</td></tr>`;
-                }).join("") : "<tr><td colspan=\"9\" class=\"muted\">暂无数据</td></tr>");
+                    return `<tr><td>${img}</td><td>${escapeHtml(num)}</td><td>${name}</td><td>${escapeHtml(x.period || "")}</td><td>${escapeHtml(x.type || "")}</td><td>${escapeHtml(x.material || "")}</td><td>${escapeHtml(artifactSourceLabel(x.sourceSystem))}</td><td><button type="button" class="btn btn-light" onclick="openEditArtifact(${i})">编辑</button>${delBtn}</td></tr>`;
+                }).join("") : "<tr><td colspan=\"8\" class=\"muted\">暂无数据</td></tr>");
             setMsg("artifactMsg", "共 " + data.length + " 条", true);
         } catch (e) { setMsg("artifactMsg", e.message, false); }
     }
@@ -2211,9 +2195,7 @@
             if (el) el.value = "";
         });
         const src = document.getElementById("filterArtifactSource");
-        const kg = document.getElementById("filterArtifactKgStatus");
         if (src) src.value = "";
-        if (kg) kg.value = "";
         loadArtifacts();
     }
 
@@ -2242,7 +2224,6 @@
         const imageUrl = document.getElementById(prefix + "ImageUrl").value.trim();
         const detailUrl = document.getElementById(prefix + "DetailUrl").value.trim();
         const description = document.getElementById(prefix + "Description").value.trim();
-        const kgSyncStatus = document.getElementById(prefix + "KgStatus").value.trim();
         if (!objectId) throw new Error("请填写文物编号");
         if (!sourceSystem) throw new Error("请选择所属馆别");
         if (!name) throw new Error("请填写文物名称");
@@ -2259,8 +2240,7 @@
             material: material || null,
             description,
             imageUrl,
-            detailUrl: detailUrl || null,
-            kgSyncStatus: kgSyncStatus || "PENDING"
+            detailUrl: detailUrl || null
         };
     }
 
@@ -2271,7 +2251,6 @@
         });
         document.getElementById("newArtifactDescription").value = "";
         document.getElementById("newArtifactSourceSystem").value = "";
-        document.getElementById("newArtifactKgStatus").value = "PENDING";
     }
 
     async function createArtifact() {
@@ -2298,7 +2277,6 @@
         document.getElementById("editArtifactImageUrl").value = x.imageUrl || "";
         document.getElementById("editArtifactDetailUrl").value = x.detailUrl || "";
         document.getElementById("editArtifactDescription").value = x.description || "";
-        document.getElementById("editArtifactKgStatus").value = x.kgSyncStatus || "PENDING";
         document.getElementById("artifactEditPanel").style.display = "inline-flex";
         document.getElementById("artifactEditPanel").scrollIntoView({ behavior: "smooth", block: "nearest" });
         setMsg("artifactMsg", "请在下方编辑区修改后保存", true);
