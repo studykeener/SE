@@ -8,13 +8,13 @@ spring:
       max-request-size: 25MB
   datasource:
     #本地测试下面这样
-    # url: jdbc:mysql://localhost:3306/overseas_artifacts?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
-    # username: root
-    # password: 123456
+    url: jdbc:mysql://localhost:3306/overseas_artifacts?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: root
+    password: 123456
     #连接公共数据库下面这样 不要随便用，最后再用！！
-    url: jdbc:mysql://47.96.152.190:3306/overseas_chinese_artifacts?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
-    username: root        
-    password: "!software2303"     
+    # url: jdbc:mysql://47.96.152.190:3306/overseas_chinese_artifacts?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    # username: root        
+    # password: "!software2303"     
     driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
     hibernate:

@@ -25,11 +25,15 @@ public class PhotoAuditStatusConverter implements AttributeConverter<ReviewStatu
         if (db == null) {
             return ReviewStatus.PENDING;
         }
-        return switch (db) {
-            case 1 -> ReviewStatus.APPROVED;
-            case 2, 4 -> ReviewStatus.REJECTED;
-            case 3 -> ReviewStatus.RECHECK;
-            default -> ReviewStatus.PENDING;
-        };
+        if (db == 1) {
+            return ReviewStatus.APPROVED;
+        }
+        if (db == 2 || db == 4) {
+            return ReviewStatus.REJECTED;
+        }
+        if (db == 3) {
+            return ReviewStatus.RECHECK;
+        }
+        return ReviewStatus.PENDING;
     }
 }

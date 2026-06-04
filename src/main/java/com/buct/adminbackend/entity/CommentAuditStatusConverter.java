@@ -25,11 +25,15 @@ public class CommentAuditStatusConverter implements AttributeConverter<ReviewSta
         if (db == null) {
             return ReviewStatus.PENDING;
         }
-        return switch (db) {
-            case 1 -> ReviewStatus.APPROVED;
-            case 2 -> ReviewStatus.REJECTED;
-            case 3 -> ReviewStatus.RECHECK;
-            default -> ReviewStatus.PENDING;
-        };
+        if (db == 1) {
+            return ReviewStatus.APPROVED;
+        }
+        if (db == 2) {
+            return ReviewStatus.REJECTED;
+        }
+        if (db == 3) {
+            return ReviewStatus.RECHECK;
+        }
+        return ReviewStatus.PENDING;
     }
 }

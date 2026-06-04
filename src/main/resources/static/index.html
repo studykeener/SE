@@ -66,12 +66,6 @@
         }
         .modal-title { margin: 0 0 6px; font-size: 17px; }
         .modal-textarea { width: 100%; min-height: 100px; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font: inherit; resize: vertical; box-sizing: border-box; }
-        .dashboard-pending-card {
-            display: block; max-width: 360px; border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px;
-            background: var(--panel); text-align: left; cursor: pointer; box-shadow: var(--shadow);
-        }
-        .dashboard-pending-card:hover { border-color: var(--primary); }
-        .dashboard-pending-card .num { font-size: 28px; font-weight: 800; color: var(--primary); line-height: 1.1; }
         .rbac-hint { margin:0 0 12px; color:var(--muted); font-size:13px; line-height:1.6; }
         .rbac-steps { margin:0 0 14px; padding-left:18px; color:var(--muted); font-size:13px; line-height:1.7; }
         .rbac-perm-groups { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:10px; margin:10px 0; }
@@ -192,6 +186,7 @@
                         <div class="toolbar" style="margin-top:10px;">
                             <button type="button" class="btn btn-light" onclick="loadDashboard()">刷新统计</button>
                         </div>
+                        <p id="dashboardMsg" class="msg" style="display:none;"></p>
                         <div id="dashboardOverviewStats" class="inline" style="margin-top:8px;"></div>
                         <div class="panel" style="margin-top:10px;">
                             <h3 style="font-size:14px;">访问量趋势（日/周/月 · 登录人数）</h3>
@@ -457,7 +452,7 @@
                             <h3 style="font-size:14px;">自动审核策略</h3>
                             <div id="strategyCurrentView" class="muted" style="font-size:12px; margin-bottom:8px;"></div>
                             <div class="muted" style="font-size:12px; margin-bottom:8px;">
-                                风险分说明：基础分0；每命中1个轻微敏感词+10；命中严重敏感词=100；图片轻微违规+10；图片严重违规=100；总分范围0-100。
+                                风险分说明：基础分0；每命中1个轻微敏感词+10；命中严重敏感词=100；总分范围0-100。
                             </div>
                             <div class="inline">
                                 <input class="input" id="strategyLowMaxScore" type="number" min="0" max="100" placeholder="低风险上限" style="width:120px;">
@@ -1822,23 +1817,6 @@
         } catch (e) { setMsg("logMsg", e.message, false); }
     }
 
-    function goToReviewQueueWithStatus(status) {
-        document.getElementById("reviewFilterStatus").value = status;
-        document.getElementById("reviewFilterType").value = "";
-        document.getElementById("reviewFilterSource").value = "";
-        document.getElementById("reviewFilterSubmitter").value = "";
-        document.getElementById("reviewFilterKeyword").value = "";
-        document.getElementById("reviewFilterSubmitFrom").value = "";
-        document.getElementById("reviewFilterSubmitTo").value = "";
-        document.getElementById("reviewFilterRiskMin").value = "";
-        document.getElementById("reviewFilterRiskMax").value = "";
-        const btn = document.querySelector('.menu-btn[data-page="reviewPage"]');
-        openReviewSectionFromMenu("queue", btn);
-        loadReviewContents();
-    }
-    function goToPendingReviews() { goToReviewQueueWithStatus("PENDING"); }
-    function goToRecheckReviews() { goToReviewQueueWithStatus("RECHECK"); }
-
     function renderMiniLineSvg(values, color = "#2563eb", labels = []) {
         const arr = (values || []).map(v => Number(v || 0));
         if (!arr.length) return "<div class=\"muted\" style=\"font-size:12px;\">暂无数据</div>";
@@ -1913,6 +1891,8 @@
     }
 
     async function loadDashboard() {
+        const dashMsg = document.getElementById("dashboardMsg");
+        if (dashMsg) { dashMsg.style.display = "none"; dashMsg.textContent = ""; }
         try {
             const data = await api("/api/admin/dashboard/overview");
             dashboardOverviewCache = data;
@@ -1932,24 +1912,7 @@
             `;
             const overviewEl = document.getElementById("dashboardOverviewStats");
             if (overviewEl) {
-                if (currentAppRole === "CONTENT_REVIEWER") {
-                    overviewEl.innerHTML = `
-                        <div class="inline" style="align-items:stretch; gap:12px; width:100%;">
-                        <button type="button" class="dashboard-pending-card" style="max-width:360px; flex:1; min-width:200px;" onclick="goToPendingReviews()">
-                            <div class="num">${pending}</div>
-                            <div style="font-size:15px;font-weight:700;margin-top:4px;">待审核</div>
-                            <p class="muted" style="margin:8px 0 0;font-size:12px;">点击进入内容审核，并自动筛选为「待审核」队列。</p>
-                        </button>
-                        <button type="button" class="dashboard-pending-card" style="max-width:360px; flex:1; min-width:200px;" onclick="goToRecheckReviews()">
-                            <div class="num">${recheck}</div>
-                            <div style="font-size:15px;font-weight:700;margin-top:4px;">待复审</div>
-                            <p class="muted" style="margin:8px 0 0;font-size:12px;">点击进入内容审核，并自动筛选为「待复审」队列。</p>
-                        </button>
-                        </div>
-                    `;
-                } else {
-                    overviewEl.innerHTML = fullBadges;
-                }
+                overviewEl.innerHTML = fullBadges;
             }
             const logCards = document.getElementById("dashboardCards");
             if (logCards) {
@@ -1957,7 +1920,14 @@
             }
             renderAccessTrendCharts(data);
             renderGrowthTrendCharts(data);
-        } catch (e) { console.log(e); }
+            if (dashMsg) setMsg("dashboardMsg", "统计已刷新", true);
+        } catch (e) {
+            console.error(e);
+            if (dashMsg) {
+                setMsg("dashboardMsg", "看板加载失败：" + (e.message || "请检查网络或重启后端后重试"), false);
+                dashMsg.style.display = "block";
+            }
+        }
     }
 
     async function loadAdminRoleOptions() {
